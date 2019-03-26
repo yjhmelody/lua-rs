@@ -4,7 +4,11 @@ use std::result;
 
 use crate::compiler::error::Error;
 
+/// 包装编译信息
 pub type Result<T> = result::Result<T, Error>;
+
+// 代码原位置，用于代码生成的信息
+pub type Line = usize;
 
 #[derive(Debug)]
 pub struct Lexer {
@@ -15,7 +19,7 @@ pub struct Lexer {
     /// 源文件名
     chunk_name: String,
     /// 当前位置
-    line: usize,
+    line: Line,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -166,6 +170,7 @@ lazy_static! {
         m.insert("function", Token::KwFunction);
         m.insert("break", Token::KwBreak);
         m.insert("return", Token::KwReturn);
+        m.insert("local", Token::KwLocal);
         m.insert("if", Token::KwIf);
         m.insert("else", Token::KwElse);
         m.insert("elseif", Token::KwElseIf);
@@ -352,11 +357,18 @@ impl Lexer {
     /// 判断当前源码是否以一串字符串开头
     fn test(&self, s: &str) -> bool {
         for (i, ch) in s.bytes().enumerate() {
-            if self.chunk[self.index + i] != ch {
+            if self.is_eof() {
+                return false;
+            } else if self.chunk[self.index + i] != ch {
                 return false;
             }
         }
         return true;
+    }
+
+    #[inline]
+    fn is_eof(&self) -> bool {
+        self.chunk.len() <= self.index
     }
 
     /// 跳过n个字符
@@ -398,7 +410,7 @@ impl Lexer {
     }
 }
 
-/// 判断是否新一行
+/// 判断是否开始新一行
 fn is_new_line(c: u8) -> bool {
     c == b'\r' || c == b'\n'
 }

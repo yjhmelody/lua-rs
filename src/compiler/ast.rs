@@ -1,6 +1,7 @@
 use std::fmt;
 
-pub type Line = usize;
+use crate::compiler::lexer::Line;
+
 /// A Lua chunk also is a Lua block
 #[derive(Debug)]
 pub struct Block {
