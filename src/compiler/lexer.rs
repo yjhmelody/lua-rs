@@ -161,7 +161,26 @@ lazy_static! {
     static ref keywords: HashMap<&'static str, Token> = {
         let mut m = HashMap::new();
         m.insert("and", Token::OpAnd);
+        m.insert("or", Token::OpOr);
+        m.insert("not", Token::OpNot);
+        m.insert("function", Token::KwFunction);
         m.insert("break", Token::KwBreak);
+        m.insert("return", Token::KwReturn);
+        m.insert("if", Token::KwIf);
+        m.insert("else", Token::KwElse);
+        m.insert("elseif", Token::KwElseIf);
+        m.insert("goto", Token::KwGoto);
+        m.insert("do", Token::KwDo);
+        m.insert("end", Token::KwEnd);
+        m.insert("then", Token::KwThen);
+        m.insert("until", Token::KwUntil);
+        m.insert("repeat", Token::KwRepeat);
+        m.insert("while", Token::KwWhile);
+        m.insert("for", Token::KwFor);
+        m.insert("in", Token::KwIn);
+        m.insert("true", Token::KwTrue);
+        m.insert("false", Token::KwFalse);
+        m.insert("nil", Token::KwNil);
         m
     };
 }
@@ -177,167 +196,118 @@ impl Lexer {
             line: 1,
         }
     }
+
+    /// 返回当前单个字符的token
+    fn simple_token(&mut self, token: Token) -> Result<Token> {
+        self.next(1)?;
+        Ok(token)
+    }
     /// 返回下一个token
     pub fn next_token<'a>(&mut self) -> Result<Token> {
         self.skip_whitespaces();
         let ch = self.current()?;
-        let tok = match ch {
-            b';' => {
-                self.next(1);
-                Token::SepSemi
-            }
-            b',' => {
-                self.next(1);
-                Token::SepComma
-            }
-            b'(' => {
-                self.next(1);
-                Token::SepLparen
-            }
-            b')' => {
-                self.next(1);
-                Token::SepRparen
-            }
-            b']' => {
-                self.next(1);
-                Token::SepRbrack
-            }
-            b'{' => {
-                self.next(1);
-                Token::SepLcurly
-            }
-            b'}' => {
-                self.next(1);
-                Token::SepRcurly
-            }
-            b'+' => {
-                self.next(1);
-                Token::OpAdd
-            }
-            b'-' => {
-                self.next(1);
-                Token::OpMinus
-            }
-            b'*' => {
-                self.next(1);
-                Token::OpMinus
-            }
-            b'^' => {
-                self.next(1);
-                Token::OpPow
-            }
-            b'%' => {
-                self.next(1);
-                Token::OpMod
-            }
-            b'&' => {
-                self.next(1);
-                Token::OpBitAnd
-            }
-            b'|' => {
-                self.next(1);
-                Token::OpBitOr
-            }
-            b'#' => {
-                self.next(1);
-                Token::OpLen
-            }
+        match ch {
+            b';' => self.simple_token(Token::SepSemi),
+            b',' => self.simple_token(Token::SepComma),
+            b'(' => self.simple_token(Token::SepLparen),
+            b')' => self.simple_token(Token::SepRparen),
+            b']' => self.simple_token(Token::SepRbrack),
+            b'{' => self.simple_token(Token::SepLcurly),
+            b'}' => self.simple_token(Token::SepRcurly),
+            b'+' => self.simple_token(Token::OpAdd),
+            b'-' => self.simple_token(Token::OpMinus),
+            b'*' => self.simple_token(Token::OpMul),
+            b'^' => self.simple_token(Token::OpPow),
+            b'%' => self.simple_token(Token::OpMod),
+            b'&' => self.simple_token(Token::OpBitAnd),
+            b'|' => self.simple_token(Token::OpBitOr),
+            b'#' => self.simple_token(Token::OpLen),
             b':' => {
                 if self.test("::") {
                     self.next(2);
-                    Token::SepLabel
+                    Ok(Token::SepLabel)
                 } else {
-                    self.next(1);
-                    Token::SepColon
+                    self.simple_token(Token::SepColon)
                 }
             }
             b'/' => {
                 if self.test("//") {
                     self.next(2);
-                    Token::OpIDiv
+                    Ok(Token::OpIDiv)
                 } else {
-                    self.next(1);
-                    Token::OpDiv
+                    self.simple_token(Token::OpDiv)
                 }
             }
             b'~' => {
                 if self.test("~=") {
                     self.next(2);
-                    Token::OpNe
+                    Ok(Token::OpNe)
                 } else {
-                    self.next(1);
-                    Token::OpWave
+                    self.simple_token(Token::OpWave)
                 }
             }
             b'=' => {
                 if self.test("==") {
                     self.next(2);
-                    Token::OPEq
+                    Ok(Token::OPEq)
                 } else {
-                    self.next(1);
-                    Token::OpAssign
+                    self.simple_token(Token::OpAssign)
                 }
             }
             b'<' => {
                 if self.test("<<") {
                     self.next(2);
-                    Token::OpShl
+                    Ok(Token::OpShl)
                 } else if self.test("<=") {
                     self.next(2);
-                    Token::OpLe
+                    Ok(Token::OpLe)
                 } else {
-                    self.next(1);
-                    Token::OpLt
+                    self.simple_token(Token::OpLt)
                 }
             }
             b'>' => {
                 if self.test(">>") {
                     self.next(2);
-                    Token::OpShr
+                    Ok(Token::OpShr)
                 } else if self.test(">=") {
                     self.next(2);
-                    Token::OpGe
+                    Ok(Token::OpGe)
                 } else {
-                    self.next(1);
-                    Token::OpGt
+                    self.simple_token(Token::OpGt)
                 }
             }
             b'.' if self.test("...") => {
                 self.next(3);
-                Token::Vararg
+                Ok(Token::Vararg)
             }
             b'.' if self.test("..") => {
                 self.next(2);
-                Token::OpConcat
+                Ok(Token::OpConcat)
             }
             b'.' if self.index + 1 == self.chunk.len()
                 || !self.chunk[self.index + 1].is_ascii_digit() =>
             {
-                self.next(1);
-                Token::SepDot
+                self.simple_token(Token::SepDot)
             }
 
             b'[' => {
                 if self.test("[[") || self.test("[=") {
-                    Token::String(self.scan_long_string())
+                    Ok(Token::String(self.scan_long_string()))
                 } else {
-                    self.next(1);
-                    Token::SepLbrack
+                    self.simple_token(Token::SepLbrack)
                 }
             }
-            b'\'' | b'"' => Token::String(self.scan_short_string()),
+            b'\'' | b'"' => Ok(Token::String(self.scan_short_string())),
             _ => {
                 if ch == b'.' || ch.is_ascii_digit() {
-                    Token::Number(self.scan_number())
+                    Ok(Token::Number(self.scan_number()))
                 } else if ch == b'_' || ch.is_ascii_alphabetic() {
-                    Token::Identifier(self.scan_identifier())
+                    Ok(Token::Identifier(self.scan_identifier()))
                 } else {
                     unreachable!()
                 }
             }
-        };
-
-        Ok(tok)
+        }
     }
 
     /// 扫描长字符串
@@ -447,13 +417,21 @@ mod tests {
         let s = r#"
             +
             -
-            break
+            >>
+            ==
         "#
         .to_string();
         let mut lexer = Lexer::new(s, "test".to_string());
+
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::OpAdd);
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::OpMinus);
+        let res = lexer.next_token();
+        assert_eq!(res.unwrap(), Token::OpShr);
+        let res = lexer.next_token();
+        assert_eq!(res.unwrap(), Token::OPEq);
+
+        assert_eq!(lexer.next_token().is_err(), true);
     }
 }
