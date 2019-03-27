@@ -1,16 +1,13 @@
 #![allow(non_upper_case_globals)]
 
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::io::Read;
-use std::result;
 
 use regex::bytes::Regex;
 
-use crate::compiler::error::Error;
-
-/// 包装编译信息
-pub type Result<T> = result::Result<T, Error>;
+use crate::compiler::error::*;
 
 /// 代码原位置，用于代码生成的信息
 pub type Line = usize;
@@ -23,9 +20,11 @@ pub struct Lexer {
     index: usize,
     /// 源文件名
     chunk_name: String,
-    /// 当前位置
+    /// 当前行号
     line: Line,
-    next_token: Result<Token>,
+    /// 缓存前看token
+    next_tok: Result<Token>,
+    next_line: Line,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -205,7 +204,8 @@ impl Lexer {
             index: 0,
             chunk_name,
             line: 1,
-            next_token: Err(Error::IllegalToken),
+            next_tok: Err(Error::IllegalToken),
+            next_line: 0,
         }
     }
 
@@ -215,6 +215,20 @@ impl Lexer {
         self.line
     }
 
+    /// 向前查看1个token
+    pub fn look_ahead(&mut self) -> Result<Token> {
+        // 检查是否已经缓存
+        if self.next_line > 0 {
+            self.next_tok.clone()
+        } else {
+            let cur_line = self.current_line();
+            self.next_tok = self.next_token();
+            self.next_line = self.current_line();
+            self.line = cur_line;
+            self.next_tok.clone()
+        }
+    }
+
     /// 返回当前单个字符的token
     fn simple_token(&mut self, token: Token) -> Result<Token> {
         self.next(1)?;
@@ -222,6 +236,12 @@ impl Lexer {
     }
     /// 返回下一个token
     pub fn next_token<'a>(&mut self) -> Result<Token> {
+        if self.next_line > 0 {
+            self.line = self.next_line;
+            self.next_line = 0;
+            return self.next_tok.clone();
+        }
+
         self.skip_whitespaces()?;
         let ch = self.current()?;
         match ch {
@@ -332,6 +352,54 @@ impl Lexer {
         }
     }
 
+    /// todo: 转义字符串
+    fn escape_string(&mut self, s: String) -> Result<String> {
+        let mut ret: Vec<u8> = vec![];
+        let s = s.into_bytes();
+        let mut i = 0;
+        while i < s.len() {
+            if s[i] != b'\\' {
+                ret.push(s[i]);
+                i += 1;
+                continue;
+            }
+
+            if i + 1 == s.len() {
+                return Err(Error::IllegalEscape);
+            } else {
+                match s[i + 1] {
+                    b'a' => {
+                        ret.push(0x07u8);
+                        i += 2;
+                    }
+                    b'b' => {
+                        ret.push(0x08u8);
+                        i += 2;
+                    }
+                    b'f' => {
+                        ret.push(0x0cu8);
+                        i += 2;
+                    }
+                    b'n' => {}
+                    b'\n' => {}
+                    b'r' => {}
+                    b't' => {}
+                    b'v' => {}
+                    b'"' => {}
+                    b'\'' => {}
+                    b'\\' => {}
+                    b'0' => {}
+                    b'x' => {}
+                    b'u' => {}
+                    b'z' => {}
+                    _ => {}
+                };
+            }
+        }
+
+        unsafe { Ok(String::from_utf8_unchecked(ret)) }
+    }
+
     /// 扫描长字符串
     fn scan_long_string(&mut self) -> Result<String> {
         // long comment: -- [===[ ... ]===]
@@ -362,6 +430,7 @@ impl Lexer {
 
     /// 扫描数字
     fn scan_number(&mut self) -> Result<String> {
+        use std::str;
         let number: Regex =
             Regex::new(r#"^0[xX][[:xdigit:]]*(\.[[:xdigit:]]*)?([pP][+\-]?[[:digit:]]+)?|^[[:digit:]]*(\.[[:digit:]]*)?([eE][+\-]?[[:digit:]]+)?"#).unwrap();
 
@@ -481,7 +550,7 @@ mod tests {
             ==
             [[string]]
             'string'
-            "string"
+            "string\z"
             12.34E-56
             0x12.abp-10
             break
@@ -494,6 +563,11 @@ mod tests {
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::OpAdd);
         assert_eq!(lexer.current_line(), 2);
+
+        let res = lexer.look_ahead();
+        assert_eq!(res.unwrap(), Token::OpMinus);
+        assert_eq!(lexer.current_line(), 2);
+
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::OpMinus);
         assert_eq!(lexer.current_line(), 3);
@@ -515,7 +589,7 @@ mod tests {
         assert_eq!(lexer.current_line(), 7);
 
         let res = lexer.next_token();
-        assert_eq!(res.unwrap(), Token::String("string".to_string()));
+        assert_eq!(res.unwrap(), Token::String("string\\z".to_string()));
         assert_eq!(lexer.current_line(), 8);
 
         let res = lexer.next_token();
