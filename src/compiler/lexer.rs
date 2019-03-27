@@ -1,3 +1,5 @@
+#![allow(non_upper_case_globals)]
+
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::io::Read;
@@ -23,6 +25,7 @@ pub struct Lexer {
     chunk_name: String,
     /// 当前位置
     line: Line,
+    next_token: Result<Token>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -202,7 +205,14 @@ impl Lexer {
             index: 0,
             chunk_name,
             line: 1,
+            next_token: Err(Error::IllegalToken),
         }
+    }
+
+    /// 返回当前token的行号
+    #[inline]
+    pub fn current_line(&self) -> Line {
+        self.line
     }
 
     /// 返回当前单个字符的token
@@ -212,7 +222,7 @@ impl Lexer {
     }
     /// 返回下一个token
     pub fn next_token<'a>(&mut self) -> Result<Token> {
-        self.skip_whitespaces();
+        self.skip_whitespaces()?;
         let ch = self.current()?;
         match ch {
             b';' => self.simple_token(Token::SepSemi),
@@ -308,9 +318,13 @@ impl Lexer {
 
             _ => {
                 if ch == b'.' || ch.is_ascii_digit() {
-                    Ok(Token::Number(self.scan_number()))
+                    Ok(Token::Number(self.scan_number()?))
                 } else if ch == b'_' || ch.is_ascii_alphabetic() {
-                    Ok(Token::Identifier(self.scan_identifier()))
+                    let s = self.scan_identifier()?;
+                    match keywords.get(s.as_str()) {
+                        None => Ok(Token::Identifier(s)),
+                        Some(tok) => Ok(tok.clone()),
+                    }
                 } else {
                     unreachable!()
                 }
@@ -338,6 +352,7 @@ impl Lexer {
         )
             .unwrap();
 
+        // todo: escape
         let text = &self.chunk[self.index..];
         let s = short_str.find(text).ok_or(Error::IllegalToken)?.as_bytes();
         self.index += s.len();
@@ -346,32 +361,43 @@ impl Lexer {
     }
 
     /// 扫描数字
-    fn scan_number(&mut self) -> String {
-        unimplemented!()
+    fn scan_number(&mut self) -> Result<String> {
+        let number: Regex =
+            Regex::new(r#"^0[xX][[:xdigit:]]*(\.[[:xdigit:]]*)?([pP][+\-]?[[:digit:]]+)?|^[[:digit:]]*(\.[[:digit:]]*)?([eE][+\-]?[[:digit:]]+)?"#).unwrap();
+
+        let text = &self.chunk[self.index..];
+        let s = number.find(text).ok_or(Error::IllegalToken)?.as_bytes();
+        self.index += s.len();
+        unsafe { Ok(String::from_utf8_unchecked(s.to_vec())) }
     }
 
     /// 扫描标识符
-    fn scan_identifier(&mut self) -> String {
-        unimplemented!()
+    fn scan_identifier(&mut self) -> Result<String> {
+        let number: Regex = Regex::new(r##"^[_\d\w]+"##).unwrap();
+        let text = &self.chunk[self.index..];
+        let s = number.find(text).ok_or(Error::IllegalToken)?.as_bytes();
+        self.index += s.len();
+        unsafe { Ok(String::from_utf8_unchecked(s.to_vec())) }
     }
 
     /// 跳过空白符(总是跳过注释)
-    fn skip_whitespaces(&mut self) {
+    fn skip_whitespaces(&mut self) -> Result<()> {
         while let Ok(ch) = self.current() {
             if self.test("--") {
-                self.skip_comment();
+                self.skip_comment()?;
             } else if self.test("\r\n") || self.test("\n\r") {
-                self.next(2);
+                self.next(2)?;
                 self.line += 1;
             } else if is_new_line(ch) {
-                self.next(1);
+                self.next(1)?;
                 self.line += 1;
             } else if ch.is_ascii_whitespace() {
-                self.next(1);
+                self.next(1)?;
             } else {
                 break;
             }
         }
+        Ok(())
     }
 
     /// 判断当前源码是否以一串字符串开头
@@ -413,8 +439,8 @@ impl Lexer {
     }
 
     /// 跳过注释
-    fn skip_comment(&mut self) {
-        self.next(2);
+    fn skip_comment(&mut self) -> Result<()> {
+        self.next(2)?;
         // long comment: --[[ ...... --]]
         match self.current() {
             Ok(b'[') => unimplemented!(),
@@ -422,11 +448,13 @@ impl Lexer {
         }
 
         while let Ok(ch) = self.current() {
-            self.next(1);
+            self.next(1)?;
             if is_new_line(ch) {
                 break;
             }
         }
+
+        Ok(())
     }
 }
 
@@ -436,9 +464,9 @@ fn is_new_line(c: u8) -> bool {
 }
 
 /// 判断字符是否符合16进制
-fn is_hexadecimal(c: u8) -> bool {
-    (b'0' <= c && c <= b'9') || (b'a' <= c && c <= b'f') || (b'A' <= c && c <= b'F')
-}
+//fn is_hexadecimal(c: u8) -> bool {
+//    (b'0' <= c && c <= b'9') || (b'a' <= c && c <= b'f') || (b'A' <= c && c <= b'F')
+//}
 
 #[cfg(test)]
 mod tests {
@@ -454,6 +482,10 @@ mod tests {
             [[string]]
             'string'
             "string"
+            12.34E-56
+            0x12.abp-10
+            break
+            name
         "##
         .to_string();
 
@@ -461,18 +493,47 @@ mod tests {
 
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::OpAdd);
+        assert_eq!(lexer.current_line(), 2);
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::OpMinus);
+        assert_eq!(lexer.current_line(), 3);
+
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::OpShr);
+        assert_eq!(lexer.current_line(), 4);
+
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::OPEq);
+        assert_eq!(lexer.current_line(), 5);
+
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::String("string".to_string()));
+        assert_eq!(lexer.current_line(), 6);
+
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::String("string".to_string()));
+        assert_eq!(lexer.current_line(), 7);
+
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::String("string".to_string()));
+        assert_eq!(lexer.current_line(), 8);
+
+        let res = lexer.next_token();
+        assert_eq!(res.unwrap(), Token::Number("12.34E-56".to_string()));
+        assert_eq!(lexer.current_line(), 9);
+
+        let res = lexer.next_token();
+        assert_eq!(res.unwrap(), Token::Number("0x12.abp-10".to_string()));
+        assert_eq!(lexer.current_line(), 10);
+
+        let res = lexer.next_token();
+        assert_eq!(res.unwrap(), Token::KwBreak);
+        assert_eq!(lexer.current_line(), 11);
+
+        let res = lexer.next_token();
+        assert_eq!(res.unwrap(), Token::Identifier("name".to_string()));
+        assert_eq!(lexer.current_line(), 12);
+
         assert_eq!(lexer.next_token().is_err(), true);
     }
 }
