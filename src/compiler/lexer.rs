@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::io::Read;
+use std::str;
 
 use regex::bytes::Regex;
 
@@ -353,9 +354,9 @@ impl Lexer {
     }
 
     /// todo: 转义字符串
-    fn escape_string(&mut self, s: String) -> Result<String> {
+    fn escape_string(&self, s: &[u8]) -> Result<String> {
+        println!("escape");
         let mut ret: Vec<u8> = vec![];
-        let s = s.into_bytes();
         let mut i = 0;
         while i < s.len() {
             if s[i] != b'\\' {
@@ -380,19 +381,78 @@ impl Lexer {
                         ret.push(0x0cu8);
                         i += 2;
                     }
-                    b'n' => {}
-                    b'\n' => {}
-                    b'r' => {}
-                    b't' => {}
-                    b'v' => {}
-                    b'"' => {}
-                    b'\'' => {}
-                    b'\\' => {}
-                    b'0' => {}
-                    b'x' => {}
-                    b'u' => {}
+                    b'n' | b'\n' => {
+                        ret.push(b'\n');
+                        i += 2;
+                    }
+                    b'r' => {
+                        ret.push(b'\r');
+                        i += 2;
+                    }
+                    b't' => {
+                        ret.push(b'\t');
+                        i += 2;
+                    }
+                    b'v' => {
+                        ret.push(0x0bu8);
+                        i += 2;
+                    }
+                    ch @ b'"' | ch @ b'\'' | ch @ b'\\' => {
+                        ret.push(ch);
+                        i += 2;
+                    }
+                    // todo: fix it
+                    // \ddd
+                    ch if ch.is_ascii_digit() => {
+                        let re_dec_escaped_seq: Regex = Regex::new(r##"^\\[0-9]{1,3}"##).unwrap();
+                        let num = re_dec_escaped_seq
+                            .find(&s[i + 1..])
+                            .ok_or(Error::IllegalEscape)?
+                            .as_bytes();
+                        println!("{:?}", re_dec_escaped_seq);
+                        let num = str::from_utf8(num).or(Err(Error::IllegalEscape))?;
+                        let len = num.len() + 1;
+                        println!("{}", num);
+                        let num = num.parse::<u8>().or(Err(Error::IllegalEscape))?;
+                        println!("{}", num);
+                        ret.push(num);
+                        i += len;
+                    }
+                    // todo: fix it
+                    // \xXX
+                    b'x' => {
+                        let re_hex_escaped_seq: Regex =
+                            Regex::new(r##"^\\[[:xdigit]]{2}"##).unwrap();
+                        println!("{:?}", s);
+                        let num = re_hex_escaped_seq
+                            .find(&s[i + 2..])
+                            .ok_or(Error::IllegalEscape)?
+                            .as_bytes();
+                        println!("test");
+                        let num = str::from_utf8(num).or(Err(Error::IllegalEscape))?;
+                        let num = num.parse::<u8>().or(Err(Error::IllegalEscape))?;
+                        ret.push(num);
+                        i += 3;
+                    }
+                    // \u{XXX}
+                    b'u' => {
+                        let re_unicode_escaped_seq: Regex =
+                            Regex::new(r##"^\\u\{[[:xdigit]]+\}"##).unwrap();
+                        let num = re_unicode_escaped_seq
+                            .find(&s[i + 3..])
+                            .ok_or(Error::IllegalEscape)?
+                            .as_bytes();
+                        let num = str::from_utf8(num).or(Err(Error::IllegalEscape))?;
+                        let len = num.len();
+                        let num = num.parse::<u8>().or(Err(Error::IllegalEscape))?;
+                        ret.push(num);
+                        i += len;
+                    }
+                    // \z
                     b'z' => {}
-                    _ => {}
+                    _ => {
+                        i += 1;
+                    }
                 };
             }
         }
@@ -425,7 +485,7 @@ impl Lexer {
         let s = short_str.find(text).ok_or(Error::IllegalToken)?.as_bytes();
         self.index += s.len();
         let s = &s[1..s.len() - 1];
-        unsafe { Ok(String::from_utf8_unchecked(s.to_vec())) }
+        self.escape_string(s)
     }
 
     /// 扫描数字
@@ -550,11 +610,13 @@ mod tests {
             ==
             [[string]]
             'string'
-            "string\z"
+            "string"
             12.34E-56
             0x12.abp-10
             break
             name
+            "\x30"
+            "λ"
         "##
         .to_string();
 
@@ -589,7 +651,7 @@ mod tests {
         assert_eq!(lexer.current_line(), 7);
 
         let res = lexer.next_token();
-        assert_eq!(res.unwrap(), Token::String("string\\z".to_string()));
+        assert_eq!(res.unwrap(), Token::String("string".to_string()));
         assert_eq!(lexer.current_line(), 8);
 
         let res = lexer.next_token();
@@ -607,6 +669,14 @@ mod tests {
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::Identifier("name".to_string()));
         assert_eq!(lexer.current_line(), 12);
+
+        //        let res = lexer.next_token();
+        //        assert_eq!(res.unwrap(), Token::String("A".to_string()));
+        //        assert_eq!(lexer.current_line(), 13);
+
+        let res = lexer.next_token();
+        assert_eq!(res.unwrap(), Token::String("0".to_string()));
+        assert_eq!(lexer.current_line(), 14);
 
         assert_eq!(lexer.next_token().is_err(), true);
     }
