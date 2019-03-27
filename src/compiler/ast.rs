@@ -5,18 +5,18 @@ use crate::compiler::lexer::Line;
 /// A Lua chunk also is a Lua block
 #[derive(Debug)]
 pub struct Block {
-    last_line: Line,
     stats: Vec<Stat>,
     ret_exps: Vec<Exp>,
+    last_line: Line,
 }
 
 impl Block {
     #[inline]
-    pub fn new(last_line: Line, stats: Vec<Stat>, ret_exps: Vec<Exp>) -> Self {
+    pub fn new(stats: Vec<Stat>, ret_exps: Vec<Exp>, last_line: Line) -> Self {
         Self {
-            last_line,
             stats,
             ret_exps,
+            last_line,
         }
     }
 }

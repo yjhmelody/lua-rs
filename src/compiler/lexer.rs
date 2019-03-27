@@ -12,7 +12,7 @@ use crate::compiler::error::Error;
 /// 包装编译信息
 pub type Result<T> = result::Result<T, Error>;
 
-// 代码原位置，用于代码生成的信息
+/// 代码原位置，用于代码生成的信息
 pub type Line = usize;
 
 #[derive(Debug)]
