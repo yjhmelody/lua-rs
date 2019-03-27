@@ -10,6 +10,17 @@ pub struct Block {
     ret_exps: Vec<Exp>,
 }
 
+impl Block {
+    #[inline]
+    pub fn new(last_line: Line, stats: Vec<Stat>, ret_exps: Vec<Exp>) -> Self {
+        Self {
+            last_line,
+            stats,
+            ret_exps,
+        }
+    }
+}
+
 /// Lua stat, including Lua expression
 #[derive(Debug)]
 pub enum Stat {

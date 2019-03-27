@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
+use std::io::Read;
 use std::result;
+
+use regex::bytes::Regex;
 
 use crate::compiler::error::Error;
 
@@ -229,7 +232,7 @@ impl Lexer {
             b'#' => self.simple_token(Token::OpLen),
             b':' => {
                 if self.test("::") {
-                    self.next(2);
+                    self.next(2)?;
                     Ok(Token::SepLabel)
                 } else {
                     self.simple_token(Token::SepColon)
@@ -237,7 +240,7 @@ impl Lexer {
             }
             b'/' => {
                 if self.test("//") {
-                    self.next(2);
+                    self.next(2)?;
                     Ok(Token::OpIDiv)
                 } else {
                     self.simple_token(Token::OpDiv)
@@ -245,7 +248,7 @@ impl Lexer {
             }
             b'~' => {
                 if self.test("~=") {
-                    self.next(2);
+                    self.next(2)?;
                     Ok(Token::OpNe)
                 } else {
                     self.simple_token(Token::OpWave)
@@ -253,7 +256,7 @@ impl Lexer {
             }
             b'=' => {
                 if self.test("==") {
-                    self.next(2);
+                    self.next(2)?;
                     Ok(Token::OPEq)
                 } else {
                     self.simple_token(Token::OpAssign)
@@ -261,10 +264,10 @@ impl Lexer {
             }
             b'<' => {
                 if self.test("<<") {
-                    self.next(2);
+                    self.next(2)?;
                     Ok(Token::OpShl)
                 } else if self.test("<=") {
-                    self.next(2);
+                    self.next(2)?;
                     Ok(Token::OpLe)
                 } else {
                     self.simple_token(Token::OpLt)
@@ -272,21 +275,21 @@ impl Lexer {
             }
             b'>' => {
                 if self.test(">>") {
-                    self.next(2);
+                    self.next(2)?;
                     Ok(Token::OpShr)
                 } else if self.test(">=") {
-                    self.next(2);
+                    self.next(2)?;
                     Ok(Token::OpGe)
                 } else {
                     self.simple_token(Token::OpGt)
                 }
             }
             b'.' if self.test("...") => {
-                self.next(3);
+                self.next(3)?;
                 Ok(Token::Vararg)
             }
             b'.' if self.test("..") => {
-                self.next(2);
+                self.next(2)?;
                 Ok(Token::OpConcat)
             }
             b'.' if self.index + 1 == self.chunk.len()
@@ -294,15 +297,15 @@ impl Lexer {
             {
                 self.simple_token(Token::SepDot)
             }
-
             b'[' => {
                 if self.test("[[") || self.test("[=") {
-                    Ok(Token::String(self.scan_long_string()))
+                    Ok(Token::String(self.scan_long_string()?))
                 } else {
                     self.simple_token(Token::SepLbrack)
                 }
             }
-            b'\'' | b'"' => Ok(Token::String(self.scan_short_string())),
+            b'\'' | b'"' => Ok(Token::String(self.scan_short_string()?)),
+
             _ => {
                 if ch == b'.' || ch.is_ascii_digit() {
                     Ok(Token::Number(self.scan_number()))
@@ -316,13 +319,30 @@ impl Lexer {
     }
 
     /// 扫描长字符串
-    fn scan_long_string(&mut self) -> String {
-        unimplemented!()
+    fn scan_long_string(&mut self) -> Result<String> {
+        // long comment: -- [===[ ... ]===]
+        let long_bracket: Regex =
+            Regex::new(r##"^(?P<comment>\[=*\[(?P<string>.*?)\]=*\])"##).unwrap();
+
+        let text = &self.chunk[self.index..];
+        let caps = &long_bracket.captures(text).ok_or(Error::IllegalToken)?;
+        // todo: trim string
+        self.index += caps["comment"].len();
+        unsafe { Ok(String::from_utf8_unchecked(caps["string"].to_vec())) }
     }
 
     /// 扫描短字符串
-    fn scan_short_string(&mut self) -> String {
-        unimplemented!()
+    fn scan_short_string(&mut self) -> Result<String> {
+        let short_str: Regex = Regex::new(
+            r##"(^'(\\\\|\\' | \\\n|\\z\s*|[^'\n])*')|^"(\\\\|\\' | \\\n|\\z\s*|[^'\n])*""##,
+        )
+            .unwrap();
+
+        let text = &self.chunk[self.index..];
+        let s = short_str.find(text).ok_or(Error::IllegalToken)?.as_bytes();
+        self.index += s.len();
+        let s = &s[1..s.len() - 1];
+        unsafe { Ok(String::from_utf8_unchecked(s.to_vec())) }
     }
 
     /// 扫描数字
@@ -426,13 +446,17 @@ mod tests {
 
     #[test]
     fn test_lexer() {
-        let s = r#"
+        let s = r##"
             +
             -
             >>
             ==
-        "#
+            [[string]]
+            'string'
+            "string"
+        "##
         .to_string();
+
         let mut lexer = Lexer::new(s, "test".to_string());
 
         let res = lexer.next_token();
@@ -443,7 +467,12 @@ mod tests {
         assert_eq!(res.unwrap(), Token::OpShr);
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::OPEq);
-
+        let res = lexer.next_token();
+        assert_eq!(res.unwrap(), Token::String("string".to_string()));
+        let res = lexer.next_token();
+        assert_eq!(res.unwrap(), Token::String("string".to_string()));
+        let res = lexer.next_token();
+        assert_eq!(res.unwrap(), Token::String("string".to_string()));
         assert_eq!(lexer.next_token().is_err(), true);
     }
 }
