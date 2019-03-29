@@ -1,4 +1,6 @@
 #![allow(non_upper_case_globals)]
+#![allow(dead_code)]
+
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -9,6 +11,7 @@ use std::str;
 use regex::bytes::Regex;
 
 use crate::compiler::error::*;
+use crate::compiler::token::Token;
 
 /// 代码原位置，用于代码生成的信息
 pub type Line = usize;
@@ -47,126 +50,6 @@ impl<T: Display> Display for WithPosition<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Token {
-    /// ...
-    Vararg,
-    /// ;
-    SepSemi,
-    /// ,
-    SepComma,
-    /// .
-    SepDot,
-    /// :
-    SepColon,
-    /// ::
-    SepLabel,
-    /// (
-    SepLparen,
-    /// )
-    SepRparen,
-    /// [
-    SepLbrack,
-    /// ]
-    SepRbrack,
-    /// {
-    SepLcurly,
-    /// }
-    SepRcurly,
-    /// =
-    OpAssign,
-    /// - (sub or unm)
-    OpMinus,
-    /// ~ (bnot or bxor)
-    OpWave,
-    /// +
-    OpAdd,
-    /// *
-    OpMul,
-    /// /
-    OpDiv,
-    /// //
-    OpIDiv,
-    /// ^
-    OpPow,
-    /// %
-    OpMod,
-    /// &
-    OpBitAnd,
-    /// |
-    OpBitOr,
-    /// >>
-    OpShr,
-    /// <<
-    OpShl,
-    /// ..
-    OpConcat,
-    /// <
-    OpLt,
-    /// <=
-    OpLe,
-    /// >
-    OpGt,
-    /// >=
-    OpGe,
-    /// ==
-    OPEq,
-    /// ~=
-    OpNe,
-    /// #
-    OpLen,
-    /// and
-    OpAnd,
-    /// or
-    OpOr,
-    /// not
-    OpNot,
-    /// break
-    KwBreak,
-    /// do
-    KwDo,
-    /// else
-    KwElse,
-    /// elseif
-    KwElseIf,
-    /// end
-    KwEnd,
-    /// false
-    KwFalse,
-    /// for
-    KwFor,
-    /// function
-    KwFunction,
-    /// goto
-    KwGoto,
-    /// if
-    KwIf,
-    /// in
-    KwIn,
-    /// local
-    KwLocal,
-    /// nil
-    KwNil,
-    /// repeat
-    KwRepeat,
-    /// return
-    KwReturn,
-    /// then
-    KwThen,
-    /// true
-    KwTrue,
-    /// until
-    KwUntil,
-    /// while
-    KwWhile,
-    /// `id`
-    Identifier(String),
-    /// `number`
-    Number(String),
-    /// `string`
-    String(String),
-}
-
 lazy_static! {
     static ref keywords: HashMap<&'static str, Token> = {
         let mut m = HashMap::new();
@@ -197,11 +80,25 @@ lazy_static! {
 }
 
 impl Lexer {
-    /// 创建词法分析
+    /// 从String中创建词法分析器
     #[inline]
     pub fn new(chunk: String, chunk_name: String) -> Self {
         Self {
             chunk: chunk.into_bytes(),
+            index: 0,
+            chunk_name,
+            line: 1,
+            next_tok: Err(Error::IllegalToken),
+            next_line: 0,
+        }
+    }
+
+    /// 从IntoIterator中创建词法分析器
+    #[inline]
+    pub fn from_iter<T: IntoIterator<Item=u8>>(iter: T, chunk_name: String) -> Self {
+        let chunk = iter.into_iter().collect();
+        Self {
+            chunk,
             index: 0,
             chunk_name,
             line: 1,
@@ -231,6 +128,7 @@ impl Lexer {
     }
 
     /// 返回当前单个字符的token
+    #[inline]
     fn simple_token(&mut self, token: Token) -> Result<Token> {
         self.next(1)?;
         Ok(token)
@@ -588,14 +486,16 @@ impl Lexer {
 }
 
 /// 判断是否开始新一行
+#[inline]
 fn is_new_line(c: u8) -> bool {
     c == b'\r' || c == b'\n'
 }
 
 /// 判断字符是否符合16进制
-//fn is_hexadecimal(c: u8) -> bool {
-//    (b'0' <= c && c <= b'9') || (b'a' <= c && c <= b'f') || (b'A' <= c && c <= b'F')
-//}
+#[inline]
+fn is_hexadecimal(c: u8) -> bool {
+    (b'0' <= c && c <= b'9') || (b'a' <= c && c <= b'f') || (b'A' <= c && c <= b'F')
+}
 
 #[cfg(test)]
 mod tests {
@@ -615,12 +515,10 @@ mod tests {
             0x12.abp-10
             break
             name
-            "\x30"
-            "λ"
         "##
         .to_string();
 
-        let mut lexer = Lexer::new(s, "test".to_string());
+        let mut lexer = Lexer::from_iter(s.bytes(), "test".to_string());
 
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::OpAdd);
@@ -669,14 +567,6 @@ mod tests {
         let res = lexer.next_token();
         assert_eq!(res.unwrap(), Token::Identifier("name".to_string()));
         assert_eq!(lexer.current_line(), 12);
-
-        //        let res = lexer.next_token();
-        //        assert_eq!(res.unwrap(), Token::String("A".to_string()));
-        //        assert_eq!(lexer.current_line(), 13);
-
-        let res = lexer.next_token();
-        assert_eq!(res.unwrap(), Token::String("0".to_string()));
-        assert_eq!(lexer.current_line(), 14);
 
         assert_eq!(lexer.next_token().is_err(), true);
     }

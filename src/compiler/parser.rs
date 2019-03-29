@@ -1,5 +1,8 @@
+#![allow(dead_code)]
+
 use crate::compiler::ast::*;
 use crate::compiler::lexer::*;
+use crate::compiler::token::Token;
 
 fn parse_block(lexer: &mut Lexer) -> Block {
     Block::new(

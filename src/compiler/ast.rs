@@ -1,4 +1,4 @@
-use std::fmt;
+#![allow(dead_code)]
 
 use crate::compiler::lexer::Line;
 
