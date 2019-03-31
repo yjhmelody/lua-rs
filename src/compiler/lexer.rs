@@ -149,10 +149,10 @@ impl Lexer {
         // 当遇到Error::EOF时，转为Token::Eof
         self.skip_whitespaces()?;
         let ch = match self.current() {
-            Err(Error::EOF) => {
+            Some(ch) => ch,
+            None => {
                 return Ok(Token::Eof);
             }
-            res => res?,
         };
 
         match ch {
@@ -411,7 +411,7 @@ impl Lexer {
 
     /// 跳过空白符(总是跳过注释)
     fn skip_whitespaces(&mut self) -> Result<()> {
-        while let Ok(ch) = self.current() {
+        while let Some(ch) = self.current() {
             if self.test("--") {
                 self.skip_comment()?;
             } else if self.test("\r\n") || self.test("\n\r") {
@@ -454,11 +454,11 @@ impl Lexer {
 
     /// 返回当前字符
     #[inline]
-    fn current(&self) -> Result<u8> {
+    fn current(&self) -> Option<u8> {
         if self.is_eof() {
-            Err(Error::EOF)
+            None
         } else {
-            Ok(self.chunk[self.index])
+            Some(self.chunk[self.index])
         }
     }
 
@@ -467,7 +467,7 @@ impl Lexer {
         self.next(2);
         // long comment: --[[ ...... --]]
         match self.current() {
-            Ok(b'[') => {
+            Some(b'[') => {
                 self.scan_long_string()?;
                 return Ok(());
             }
@@ -475,7 +475,7 @@ impl Lexer {
         }
 
         // short comment: --
-        while let Ok(ch) = self.current() {
+        while let Some(ch) = self.current() {
             self.next(1);
             if is_new_line(ch) {
                 break;

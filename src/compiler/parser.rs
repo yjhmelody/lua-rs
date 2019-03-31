@@ -66,10 +66,6 @@ fn parse_exp_list(lexer: &mut Lexer) -> Result<Vec<Exp>> {
     Ok(exp_list)
 }
 
-fn parse_exp(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
-}
-
 fn parse_stat(lexer: &mut Lexer) -> Result<Stat> {
     match lexer.look_ahead()? {
         // deal with `;`
@@ -339,29 +335,22 @@ fn parse_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
     unimplemented!()
 }
 
+fn parse_exp(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+#[inline]
 fn is_return_or_block_end(tok: Result<Token>) -> bool {
     match tok {
         Ok(tok) => match tok {
-            Token::KwReturn | Token::KwEnd | Token::KwElse | Token::KwElseIf | Token::KwUntil => {
-                true
-            }
+            Token::Eof
+            | Token::KwReturn
+            | Token::KwEnd
+            | Token::KwElse
+            | Token::KwElseIf
+            | Token::KwUntil => true,
             _ => false,
         },
-        _ => is_err_eof(tok),
-    }
-}
-
-// 将EOF Error 转为EOF Token
-fn err_eof_to_token(tok: Result<Token>) -> Result<Token> {
-    match tok {
-        Err(Error::EOF) => Ok(Token::Eof),
-        tok => tok,
-    }
-}
-
-fn is_err_eof(tok: Result<Token>) -> bool {
-    match tok {
-        Err(Error::EOF) => true,
         _ => false,
     }
 }
