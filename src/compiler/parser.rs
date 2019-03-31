@@ -153,6 +153,7 @@ fn parse_while_stat(lexer: &mut Lexer) -> Result<Stat> {
 }
 
 fn parse_repeat_stat(lexer: &mut Lexer) -> Result<Stat> {
+    // skip `repeat`
     lexer.next_token()?;
     let block = Box::new(parse_block(lexer)?);
     match lexer.next_token() {
@@ -165,11 +166,161 @@ fn parse_repeat_stat(lexer: &mut Lexer) -> Result<Stat> {
 }
 
 fn parse_if_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    // skip `if`
+    lexer.next_token()?;
+    let mut exps = vec![];
+    let mut blocks = vec![];
+    exps.push(parse_exp(lexer)?);
+    // skip `then`
+    match lexer.next_token() {
+        Ok(Token::KwThen) => {
+            blocks.push(parse_block(lexer)?);
+        }
+        _ => {
+            return Err(Error::IllegalStat);
+        }
+    }
+
+    // elseif
+    while let Ok(Token::KwElseIf) = lexer.look_ahead() {
+        lexer.next_token()?;
+        exps.push(parse_exp(lexer)?);
+
+        match lexer.next_token() {
+            Ok(Token::KwThen) => {
+                blocks.push(parse_block(lexer)?);
+            }
+            _ => {
+                return Err(Error::IllegalStat);
+            }
+        };
+    }
+
+    // else
+    if let Ok(Token::KwElse) = lexer.look_ahead() {
+        lexer.next_token()?;
+        // todo
+        exps.push(parse_exp(lexer)?);
+        match lexer.next_token() {
+            Ok(Token::KwThen) => {
+                blocks.push(parse_block(lexer)?);
+            }
+            _ => {
+                return Err(Error::IllegalStat);
+            }
+        };
+    }
+
+    Ok(Stat::If { exps, blocks })
 }
 
 fn parse_for_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    lexer.next_token()?;
+    let line_of_for = lexer.current_line();
+    let name = match lexer.next_ident() {
+        Ok(Token::Identifier(s)) => s,
+        _ => {
+            return Err(Error::NotIdentifier);
+        }
+    };
+    if let Ok(Token::OpAssign) = lexer.look_ahead() {
+        // =
+        _parse_for_num_stat(lexer, line_of_for, name)
+    } else {
+        // in
+        _parse_for_in_stat(lexer, name)
+    }
+}
+
+fn _parse_for_num_stat(lexer: &mut Lexer, line_of_for: Line, var_name: String) -> Result<Stat> {
+    lexer.next_token()?;
+    let init_exp = parse_exp(lexer)?;
+    let limit_exp = match lexer.look_ahead() {
+        Ok(Token::SepComma) => {
+            lexer.next_token()?;
+            parse_exp(lexer)?
+        }
+        _ => {
+            return Err(Error::IllegalStat);
+        }
+    };
+
+    // optinal exp, default to 1
+    let step_exp = match lexer.look_ahead() {
+        Ok(Token::SepComma) => {
+            lexer.next_token()?;
+            parse_exp(lexer)?
+        }
+        _ => Exp::Integer {
+            line: lexer.current_line(),
+            val: 1,
+        },
+    };
+
+    let line_of_do = match lexer.next_token() {
+        Ok(Token::KwDo) => lexer.current_line(),
+        _ => {
+            return Err(Error::IllegalStat);
+        }
+    };
+
+    let block = Box::new(parse_block(lexer)?);
+    match lexer.next_token() {
+        Ok(Token::KwEnd) => {}
+        _ => {
+            return Err(Error::IllegalStat);
+        }
+    };
+
+    Ok(Stat::ForNum {
+        line_of_for,
+        line_of_do,
+        var_name,
+        exps: (init_exp, limit_exp, step_exp),
+        block,
+    })
+}
+
+fn _parse_for_in_stat(lexer: &mut Lexer, name: String) -> Result<Stat> {
+    let name_list = _parse_name_list(lexer, name)?;
+    match lexer.next_token() {
+        Ok(Token::KwIn) => {
+            let exp_list = parse_exp_list(lexer)?;
+            let line_of_do = match lexer.next_token() {
+                Ok(Token::KwDo) => lexer.current_line(),
+                _ => {
+                    return Err(Error::IllegalStat);
+                }
+            };
+            let block = Box::new(parse_block(lexer)?);
+            match lexer.next_token() {
+                Ok(Token::KwEnd) => Ok(Stat::ForIn {
+                    line_of_do,
+                    name_list,
+                    exp_list,
+                    block,
+                }),
+                _ => Err(Error::IllegalStat),
+            }
+        }
+
+        _ => Err(Error::IllegalStat),
+    }
+}
+
+fn _parse_name_list(lexer: &mut Lexer, name0: String) -> Result<Vec<String>> {
+    let mut name_list = vec![name0];
+    while let Ok(Token::SepComma) = lexer.next_token() {
+        let name = match lexer.next_ident() {
+            Ok(Token::Identifier(s)) => s,
+            err => {
+                return Err(Error::NotIdentifier);
+            }
+        };
+        name_list.push(name);
+    }
+
+    Ok(name_list)
 }
 
 fn parse_local_assign_or_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {

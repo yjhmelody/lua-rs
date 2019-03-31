@@ -2,7 +2,6 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::io::Read;
 use std::str;
@@ -510,7 +509,7 @@ mod tests {
             -
             >>
             ==
-            [==[string]=]
+            [==[ 世界 ]=]
             'string'
             "string"
             12.34E-56
@@ -543,7 +542,7 @@ mod tests {
         assert_eq!(lexer.current_line(), 5);
 
         let res = lexer.next_token();
-        assert_eq!(res.unwrap(), Token::String("string".to_string()));
+        assert_eq!(res.unwrap(), Token::String(" 世界 ".to_string()));
         assert_eq!(lexer.current_line(), 6);
 
         let res = lexer.next_token();
