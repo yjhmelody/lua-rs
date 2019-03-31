@@ -1,7 +1,7 @@
 use std::result;
 
 /// 编译期间产生的错误
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Error {
     /// No more bytes
     EOF,

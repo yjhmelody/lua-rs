@@ -76,27 +76,10 @@ lazy_static! {
         m.insert("nil", Token::KwNil);
         m
     };
-    static ref re_long_bracket: Regex = {
-        let re = Regex::new(r##"^(?P<comment>\[=*\[(?P<string>.*?)\]=*\])"##).unwrap();
-        re
-    };
-    static ref re_short_str: Regex = {
-        let re: Regex = Regex::new(
-            r##"(^'(\\\\|\\' | \\\n|\\z\s*|[^'\n])*')|^"(\\\\|\\' | \\\n|\\z\s*|[^'\n])*""##,
-        )
-        .unwrap();
-        re
-    };
-    static ref re_number: Regex = {
-        let re = Regex::new(
-        r#"^0[xX][[:xdigit:]]*(\.[[:xdigit:]]*)?([pP][+\-]?[[:digit:]]+)?|^[[:digit:]]*(\.[[:digit:]]*)?([eE][+\-]?[[:digit:]]+)?"#
-        ).unwrap();
-        re
-    };
-    static ref re_ident: Regex = {
-        let re: Regex = Regex::new(r##"^[_\d\w]+"##).unwrap();
-        re
-    };
+    static ref re_long_bracket: Regex = Regex::new(r##"^(?P<comment>\[=*\[(?P<string>.*?)\]=*\])"##).unwrap();
+    static ref re_short_str: Regex = Regex::new(r##"(^'(\\\\|\\' | \\\n|\\z\s*|[^'\n])*')|^"(\\\\|\\' | \\\n|\\z\s*|[^'\n])*""##).unwrap();
+    static ref re_number: Regex = Regex::new(r#"^0[xX][[:xdigit:]]*(\.[[:xdigit:]]*)?([pP][+\-]?[[:digit:]]+)?|^[[:digit:]]*(\.[[:digit:]]*)?([eE][+\-]?[[:digit:]]+)?"#).unwrap();
+    static ref re_ident: Regex = Regex::new(r##"^[_\d\w]+"##).unwrap();
     static ref re_dec_escaped_seq: Regex = Regex::new(r##"^\\[0-9]{1,3}"##).unwrap();
     static ref re_hex_escaped_seq: Regex = Regex::new(r##"^\\[[:xdigit]]{2}"##).unwrap();
     static ref re_unicode_escaped_seq: Regex = Regex::new(r##"^\\u\{[[:xdigit]]+\}"##).unwrap();
@@ -157,7 +140,7 @@ impl Lexer {
         Ok(token)
     }
     /// 返回下一个token
-    pub fn next_token<'a>(&mut self) -> Result<Token> {
+    pub fn next_token(&mut self) -> Result<Token> {
         if self.next_line > 0 {
             self.line = self.next_line;
             self.next_line = 0;
@@ -268,7 +251,7 @@ impl Lexer {
                         Some(tok) => Ok(tok.clone()),
                     }
                 } else {
-                    unreachable!()
+                    Err(Error::IllegalToken)
                 }
             }
         }

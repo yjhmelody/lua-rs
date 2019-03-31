@@ -3,6 +3,8 @@
 /// Lua Token
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
+    /// End of file
+    Eof,
     /// ...
     Vararg,
     /// ;
