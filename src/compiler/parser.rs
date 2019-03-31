@@ -29,65 +29,139 @@ fn parse_stats(lexer: &mut Lexer) -> Result<Vec<Stat>> {
 }
 
 fn parse_ret_exps(lexer: &mut Lexer) -> Result<Vec<Exp>> {
-    let mut exps = vec![];
-    let tok = lexer.look_ahead();
-    let tok = err_eof_to_token(tok);
-    match tok {
-        Ok(Token::KwReturn) => {}
-        _ => {
+    match lexer.look_ahead()? {
+        Token::KwReturn => {}
+        _ => return Ok(vec![]),
+    };
+    // skip `return`
+    lexer.next_token()?;
+    match lexer.look_ahead()? {
+        Token::Eof | Token::KwElse | Token::KwElseIf | Token::KwEnd | Token::KwUntil => Ok(vec![]),
+        Token::SepSemi => {
             lexer.next_token()?;
+            Ok(vec![])
+        }
+        _ => {
+            let exps = parse_exp_list(lexer);
             match lexer.look_ahead() {
-                Ok(tok) => match tok {
-                    Token::Eof
-                    | Token::KwEnd
-                    | Token::KwElse
-                    | Token::KwElseIf
-                    | Token::KwUntil => {
-                        return Ok(exps);
-                    }
-                    Token::SepSemi => {
-                        lexer.next_token()?;
-                        return Ok(exps);
-                    }
-                    _ => {}
-                },
+                Ok(Token::SepSemi) => {
+                    lexer.next_token()?;
+                }
                 _ => {}
-            }
+            };
+
+            exps
         }
     }
-    unimplemented!()
 }
 
 fn parse_exp_list(lexer: &mut Lexer) -> Result<Vec<Exp>> {
+    let mut exp_list = vec![];
+    exp_list.push(parse_exp(lexer)?);
+    while let Ok(Token::SepSemi) = lexer.look_ahead() {
+        lexer.next_token()?;
+        exp_list.push(parse_exp(lexer)?);
+    }
+
+    Ok(exp_list)
+}
+
+fn parse_exp(lexer: &mut Lexer) -> Result<Exp> {
     unimplemented!()
 }
 
 fn parse_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    match lexer.look_ahead()? {
+        // deal with `;`
+        Token::SepSemi => parse_empty_stat(lexer),
+        Token::KwBreak => parse_break_stat(lexer),
+        Token::SepLabel => parse_label_stat(lexer),
+        Token::KwGoto => parse_goto_stat(lexer),
+        Token::KwDo => parse_do_stat(lexer),
+        Token::KwWhile => parse_while_stat(lexer),
+        Token::KwIf => parse_if_stat(lexer),
+        Token::KwRepeat => parse_repeat_stat(lexer),
+        Token::KwFor => parse_for_stat(lexer),
+        Token::KwFunction => parse_fn_def_stat(lexer),
+        Token::KwLocal => parse_local_assign_or_fn_def_stat(lexer),
+        _ => unimplemented!(),
+    }
+}
+
+fn parse_empty_stat(lexer: &mut Lexer) -> Result<Stat> {
+    lexer.next_token()?;
+    Ok(Stat::Empty)
 }
 
 fn parse_break_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    lexer.next_token()?;
+    Ok(Stat::Break {
+        line: lexer.current_line(),
+    })
 }
 
 fn parse_label_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    // skip `::`
+    lexer.next_token()?;
+    let name = lexer.next_ident()?;
+    // check `::`
+    let tok = lexer.next_token()?;
+    if tok != Token::SepLabel {
+        Err(Error::IllegalStat)
+    } else {
+        match name {
+            Token::Identifier(name) => Ok(Stat::Label { name }),
+            _ => unreachable!(),
+        }
+    }
 }
 
 fn parse_goto_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    // skip `goto`
+    lexer.next_token()?;
+    match lexer.next_ident()? {
+        Token::Identifier(name) => Ok(Stat::Goto { name }),
+        _ => unreachable!(),
+    }
 }
 
 fn parse_do_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    // skip `do`
+    lexer.next_token()?;
+    let block = Box::new(parse_block(lexer)?);
+    match lexer.next_token() {
+        Ok(Token::KwEnd) => Ok(Stat::Do { block: block }),
+        _ => Err(Error::IllegalStat),
+    }
 }
 
 fn parse_while_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    lexer.next_token()?;
+    let exp = parse_exp(lexer)?;
+    match lexer.next_token() {
+        Ok(Token::KwDo) => {
+            let block = Box::new(parse_block(lexer)?);
+            let end = lexer.next_token()?;
+            if end != Token::KwEnd {
+                Err(Error::IllegalStat)
+            } else {
+                Ok(Stat::While { exp, block })
+            }
+        }
+        _ => Err(Error::IllegalStat),
+    }
 }
 
 fn parse_repeat_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    lexer.next_token()?;
+    let block = Box::new(parse_block(lexer)?);
+    match lexer.next_token() {
+        Ok(Token::KwUntil) => {
+            let exp = parse_exp(lexer)?;
+            Ok(Stat::Repeat { exp, block })
+        }
+        _ => Err(Error::IllegalStat),
+    }
 }
 
 fn parse_if_stat(lexer: &mut Lexer) -> Result<Stat> {
@@ -144,4 +218,7 @@ fn is_err_eof(tok: Result<Token>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parser() {}
 }

@@ -264,6 +264,15 @@ impl Lexer {
         }
     }
 
+    /// 返回identifier，若不是则Err
+    pub fn next_ident(&mut self) -> Result<Token> {
+        let tok = self.next_token();
+        match tok {
+            Ok(Token::Identifier(_)) => tok,
+            _ => Err(Error::NotIdentifier),
+        }
+    }
+
     /// todo: 转义字符串
     fn escape_string(&self, s: &[u8]) -> Result<String> {
         let mut ret: Vec<u8> = vec![];

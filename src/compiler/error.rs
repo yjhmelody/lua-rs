@@ -1,14 +1,23 @@
 use std::result;
 
+// todo: 传递错误位置信息
 /// 编译期间产生的错误
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Error {
-    /// No more bytes
+    /// Need more bytes
     EOF,
     /// Illegal Token
     IllegalToken,
-    /// cannot be Escaped
+    /// Cannot be Escaped
     IllegalEscape,
+    /// Need more Tokens
+    NoMoreTokens,
+    /// Illegal Expression
+    IllegalExpression,
+    /// Illegal Expression
+    IllegalStat,
+    /// Not a Identifier
+    NotIdentifier
 }
 
 /// 包装编译错误信息
