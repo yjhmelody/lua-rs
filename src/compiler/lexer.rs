@@ -1,7 +1,6 @@
 #![allow(non_upper_case_globals)]
 #![allow(dead_code)]
 
-
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
@@ -77,6 +76,30 @@ lazy_static! {
         m.insert("nil", Token::KwNil);
         m
     };
+    static ref re_long_bracket: Regex = {
+        let re = Regex::new(r##"^(?P<comment>\[=*\[(?P<string>.*?)\]=*\])"##).unwrap();
+        re
+    };
+    static ref re_short_str: Regex = {
+        let re: Regex = Regex::new(
+            r##"(^'(\\\\|\\' | \\\n|\\z\s*|[^'\n])*')|^"(\\\\|\\' | \\\n|\\z\s*|[^'\n])*""##,
+        )
+        .unwrap();
+        re
+    };
+    static ref re_number: Regex = {
+        let re = Regex::new(
+        r#"^0[xX][[:xdigit:]]*(\.[[:xdigit:]]*)?([pP][+\-]?[[:digit:]]+)?|^[[:digit:]]*(\.[[:digit:]]*)?([eE][+\-]?[[:digit:]]+)?"#
+        ).unwrap();
+        re
+    };
+    static ref re_ident: Regex = {
+        let re: Regex = Regex::new(r##"^[_\d\w]+"##).unwrap();
+        re
+    };
+    static ref re_dec_escaped_seq: Regex = Regex::new(r##"^\\[0-9]{1,3}"##).unwrap();
+    static ref re_hex_escaped_seq: Regex = Regex::new(r##"^\\[[:xdigit]]{2}"##).unwrap();
+    static ref re_unicode_escaped_seq: Regex = Regex::new(r##"^\\u\{[[:xdigit]]+\}"##).unwrap();
 }
 
 impl Lexer {
@@ -253,7 +276,6 @@ impl Lexer {
 
     /// todo: 转义字符串
     fn escape_string(&self, s: &[u8]) -> Result<String> {
-        println!("escape");
         let mut ret: Vec<u8> = vec![];
         let mut i = 0;
         while i < s.len() {
@@ -302,31 +324,23 @@ impl Lexer {
                     // todo: fix it
                     // \ddd
                     ch if ch.is_ascii_digit() => {
-                        let re_dec_escaped_seq: Regex = Regex::new(r##"^\\[0-9]{1,3}"##).unwrap();
                         let num = re_dec_escaped_seq
                             .find(&s[i + 1..])
                             .ok_or(Error::IllegalEscape)?
                             .as_bytes();
-                        println!("{:?}", re_dec_escaped_seq);
                         let num = str::from_utf8(num).or(Err(Error::IllegalEscape))?;
                         let len = num.len() + 1;
-                        println!("{}", num);
                         let num = num.parse::<u8>().or(Err(Error::IllegalEscape))?;
-                        println!("{}", num);
                         ret.push(num);
                         i += len;
                     }
                     // todo: fix it
                     // \xXX
                     b'x' => {
-                        let re_hex_escaped_seq: Regex =
-                            Regex::new(r##"^\\[[:xdigit]]{2}"##).unwrap();
-                        println!("{:?}", s);
                         let num = re_hex_escaped_seq
                             .find(&s[i + 2..])
                             .ok_or(Error::IllegalEscape)?
                             .as_bytes();
-                        println!("test");
                         let num = str::from_utf8(num).or(Err(Error::IllegalEscape))?;
                         let num = num.parse::<u8>().or(Err(Error::IllegalEscape))?;
                         ret.push(num);
@@ -334,8 +348,6 @@ impl Lexer {
                     }
                     // \u{XXX}
                     b'u' => {
-                        let re_unicode_escaped_seq: Regex =
-                            Regex::new(r##"^\\u\{[[:xdigit]]+\}"##).unwrap();
                         let num = re_unicode_escaped_seq
                             .find(&s[i + 3..])
                             .ok_or(Error::IllegalEscape)?
@@ -361,11 +373,8 @@ impl Lexer {
     /// 扫描长字符串
     fn scan_long_string(&mut self) -> Result<String> {
         // long comment: -- [===[ ... ]===]
-        let long_bracket: Regex =
-            Regex::new(r##"^(?P<comment>\[=*\[(?P<string>.*?)\]=*\])"##).unwrap();
-
         let text = &self.chunk[self.index..];
-        let caps = &long_bracket.captures(text).ok_or(Error::IllegalToken)?;
+        let caps = &re_long_bracket.captures(text).ok_or(Error::IllegalToken)?;
         // todo: trim string
         self.index += caps["comment"].len();
         unsafe { Ok(String::from_utf8_unchecked(caps["string"].to_vec())) }
@@ -373,14 +382,12 @@ impl Lexer {
 
     /// 扫描短字符串
     fn scan_short_string(&mut self) -> Result<String> {
-        let short_str: Regex = Regex::new(
-            r##"(^'(\\\\|\\' | \\\n|\\z\s*|[^'\n])*')|^"(\\\\|\\' | \\\n|\\z\s*|[^'\n])*""##,
-        )
-            .unwrap();
-
         // todo: escape
         let text = &self.chunk[self.index..];
-        let s = short_str.find(text).ok_or(Error::IllegalToken)?.as_bytes();
+        let s = re_short_str
+            .find(text)
+            .ok_or(Error::IllegalToken)?
+            .as_bytes();
         self.index += s.len();
         let s = &s[1..s.len() - 1];
         self.escape_string(s)
@@ -389,20 +396,17 @@ impl Lexer {
     /// 扫描数字
     fn scan_number(&mut self) -> Result<String> {
         use std::str;
-        let number: Regex =
-            Regex::new(r#"^0[xX][[:xdigit:]]*(\.[[:xdigit:]]*)?([pP][+\-]?[[:digit:]]+)?|^[[:digit:]]*(\.[[:digit:]]*)?([eE][+\-]?[[:digit:]]+)?"#).unwrap();
 
         let text = &self.chunk[self.index..];
-        let s = number.find(text).ok_or(Error::IllegalToken)?.as_bytes();
+        let s = re_number.find(text).ok_or(Error::IllegalToken)?.as_bytes();
         self.index += s.len();
         unsafe { Ok(String::from_utf8_unchecked(s.to_vec())) }
     }
 
     /// 扫描标识符
     fn scan_identifier(&mut self) -> Result<String> {
-        let number: Regex = Regex::new(r##"^[_\d\w]+"##).unwrap();
         let text = &self.chunk[self.index..];
-        let s = number.find(text).ok_or(Error::IllegalToken)?.as_bytes();
+        let s = re_ident.find(text).ok_or(Error::IllegalToken)?.as_bytes();
         self.index += s.len();
         unsafe { Ok(String::from_utf8_unchecked(s.to_vec())) }
     }
@@ -470,10 +474,14 @@ impl Lexer {
         self.next(2)?;
         // long comment: --[[ ...... --]]
         match self.current() {
-            Ok(b'[') => unimplemented!(),
+            Ok(b'[') => {
+                self.scan_long_string()?;
+                return Ok(());
+            }
             _ => {}
         }
 
+        // short comment: --
         while let Ok(ch) = self.current() {
             self.next(1)?;
             if is_new_line(ch) {
@@ -508,7 +516,7 @@ mod tests {
             -
             >>
             ==
-            [[string]]
+            [==[string]=]
             'string'
             "string"
             12.34E-56
