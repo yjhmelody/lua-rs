@@ -136,7 +136,7 @@ impl Lexer {
     /// 返回当前单个字符的token
     #[inline]
     fn simple_token(&mut self, token: Token) -> Result<Token> {
-        self.next(1)?;
+        self.next(1);
         Ok(token)
     }
     /// 返回下一个token
@@ -147,8 +147,15 @@ impl Lexer {
             return self.next_tok.clone();
         }
 
+        // 当遇到Error::EOF时，转为Token::Eof
         self.skip_whitespaces()?;
-        let ch = self.current()?;
+        let ch = match self.current() {
+            Err(Error::EOF) => {
+                return Ok(Token::Eof);
+            }
+            res => res?,
+        };
+
         match ch {
             b';' => self.simple_token(Token::SepSemi),
             b',' => self.simple_token(Token::SepComma),
@@ -167,7 +174,7 @@ impl Lexer {
             b'#' => self.simple_token(Token::OpLen),
             b':' => {
                 if self.test("::") {
-                    self.next(2)?;
+                    self.next(2);
                     Ok(Token::SepLabel)
                 } else {
                     self.simple_token(Token::SepColon)
@@ -175,7 +182,7 @@ impl Lexer {
             }
             b'/' => {
                 if self.test("//") {
-                    self.next(2)?;
+                    self.next(2);
                     Ok(Token::OpIDiv)
                 } else {
                     self.simple_token(Token::OpDiv)
@@ -183,7 +190,7 @@ impl Lexer {
             }
             b'~' => {
                 if self.test("~=") {
-                    self.next(2)?;
+                    self.next(2);
                     Ok(Token::OpNe)
                 } else {
                     self.simple_token(Token::OpWave)
@@ -191,7 +198,7 @@ impl Lexer {
             }
             b'=' => {
                 if self.test("==") {
-                    self.next(2)?;
+                    self.next(2);
                     Ok(Token::OPEq)
                 } else {
                     self.simple_token(Token::OpAssign)
@@ -199,10 +206,10 @@ impl Lexer {
             }
             b'<' => {
                 if self.test("<<") {
-                    self.next(2)?;
+                    self.next(2);
                     Ok(Token::OpShl)
                 } else if self.test("<=") {
-                    self.next(2)?;
+                    self.next(2);
                     Ok(Token::OpLe)
                 } else {
                     self.simple_token(Token::OpLt)
@@ -210,21 +217,21 @@ impl Lexer {
             }
             b'>' => {
                 if self.test(">>") {
-                    self.next(2)?;
+                    self.next(2);
                     Ok(Token::OpShr)
                 } else if self.test(">=") {
-                    self.next(2)?;
+                    self.next(2);
                     Ok(Token::OpGe)
                 } else {
                     self.simple_token(Token::OpGt)
                 }
             }
             b'.' if self.test("...") => {
-                self.next(3)?;
+                self.next(3);
                 Ok(Token::Vararg)
             }
             b'.' if self.test("..") => {
-                self.next(2)?;
+                self.next(2);
                 Ok(Token::OpConcat)
             }
             b'.' if self.index + 1 == self.chunk.len()
@@ -400,13 +407,13 @@ impl Lexer {
             if self.test("--") {
                 self.skip_comment()?;
             } else if self.test("\r\n") || self.test("\n\r") {
-                self.next(2)?;
+                self.next(2);
                 self.line += 1;
             } else if is_new_line(ch) {
-                self.next(1)?;
+                self.next(1);
                 self.line += 1;
             } else if ch.is_ascii_whitespace() {
-                self.next(1)?;
+                self.next(1);
             } else {
                 break;
             }
@@ -433,28 +440,23 @@ impl Lexer {
 
     /// 跳过n个字符
     #[inline]
-    fn next(&mut self, n: usize) -> Result<()> {
+    fn next(&mut self, n: usize) {
         self.index += n;
-        if self.index < self.chunk.len() {
-            Ok(())
-        } else {
-            Err(Error::EOF)
-        }
     }
 
     /// 返回当前字符
     #[inline]
     fn current(&self) -> Result<u8> {
-        if self.chunk.len() > self.index {
-            Ok(self.chunk[self.index])
-        } else {
+        if self.is_eof() {
             Err(Error::EOF)
+        } else {
+            Ok(self.chunk[self.index])
         }
     }
 
     /// 跳过注释
     fn skip_comment(&mut self) -> Result<()> {
-        self.next(2)?;
+        self.next(2);
         // long comment: --[[ ...... --]]
         match self.current() {
             Ok(b'[') => {
@@ -466,7 +468,7 @@ impl Lexer {
 
         // short comment: --
         while let Ok(ch) = self.current() {
-            self.next(1)?;
+            self.next(1);
             if is_new_line(ch) {
                 break;
             }
@@ -559,6 +561,7 @@ mod tests {
         assert_eq!(res.unwrap(), Token::Identifier("name".to_string()));
         assert_eq!(lexer.current_line(), 12);
 
-        assert_eq!(lexer.next_token().is_err(), true);
+        assert_eq!(lexer.next_token().unwrap(), Token::Eof);
+        assert_eq!(lexer.current_line(), 13);
     }
 }
