@@ -74,7 +74,7 @@ pub enum Stat {
     },
     LocalFnDef {
         name: String,
-        exp: Box<Exp>,
+        exp: Exp,
     },
 }
 
@@ -112,17 +112,17 @@ pub enum Exp {
     Unop {
         line: Line,
         op: usize,
-        exp: Box<Self>,
+        exp: Box<Exp>,
     },
     Binop {
         line: Line,
         op: usize,
-        exp1: Box<Self>,
-        exp2: Box<Self>,
+        exp1: Box<Exp>,
+        exp2: Box<Exp>,
     },
     Concat {
         line: Line,
-        exps: Vec<Self>,
+        exps: Vec<Exp>,
     },
 
     TableConstructor {

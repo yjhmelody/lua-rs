@@ -146,7 +146,6 @@ impl Lexer {
             return self.next_tok.clone();
         }
 
-        // 当遇到Error::EOF时，转为Token::Eof
         self.skip_whitespaces()?;
         let ch = match self.current() {
             Some(ch) => ch,

@@ -119,6 +119,7 @@ pub enum Token {
     Identifier(String),
     /// `number`
     Number(String),
+    //todo: impl string to number
     /// `string`
     String(String),
 }
