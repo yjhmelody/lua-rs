@@ -17,7 +17,9 @@ pub enum Error {
     /// Illegal Expression
     IllegalStat,
     /// Not a Identifier
-    NotIdentifier
+    NotIdentifier,
+    /// Not a var expression
+    NotVarExpression,
 }
 
 /// 包装编译错误信息

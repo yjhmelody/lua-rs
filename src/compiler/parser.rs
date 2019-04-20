@@ -320,28 +320,152 @@ fn _parse_local_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
     Ok(Stat::LocalFnDef { name, exp })
 }
 
-
 fn _parse_local_var_decl_stat(lexer: &mut Lexer) -> Result<Stat> {
     let name0 = lexer.next_ident()?;
     let name_list = _parse_name_list(lexer, name0)?;
+    let exp_list = if let Ok(Token::OpAssign) = lexer.look_ahead() {
+        lexer.next_token()?;
+        parse_exp_list(lexer)?
+    } else {
+        vec![]
+    };
+    let last_line = lexer.current_line();
+    Ok(Stat::LocalVarDecl {
+        last_line,
+        name_list,
+        exp_list,
+    })
 }
-
 
 fn parse_assign_or_fn_call_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    let prefix_exp = parse_prefix_exp(lexer)?;
+    match prefix_exp {
+        Exp::FnCall {
+            line,
+            last_line,
+            prefix_exp,
+            name_exp,
+            args,
+        } => {
+            Ok(Stat::FnCall {
+                line,
+                last_line,
+                prefix_exp,
+                name_exp,
+                args,
+            })
+        }
+        _ => { parse_assign_stat(lexer, prefix_exp) }
+    }
 }
 
-fn parse_assign_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+fn parse_assign_stat(lexer: &mut Lexer, var0: Exp) -> Result<Stat> {
+    let var_list = _parse_var_list(lexer, var0)?;
+    match lexer.next_token() {
+        Ok(Token::OpAssign) => {
+            let exp_list = parse_exp_list(lexer)?;
+            let last_line = lexer.current_line();
+            Ok(Stat::Assign {
+                last_line,
+                var_list,
+                exp_list,
+            })
+        }
+        _ => { Err(Error::IllegalStat) }
+    }
 }
 
+fn _parse_var_list(lexer: &mut Lexer, var0: Exp) -> Result<Vec<Exp>> {
+    let mut var_list = vec![];
+    if _check_var(&var0) {
+        var_list.push(var0);
+    } else {
+        return Err(Error::NotVarExpression);
+    }
+    while let Ok(Token::SepComma) = lexer.look_ahead() {
+        lexer.next_token()?;
+        let exp = parse_prefix_exp(lexer)?;
+        var_list.push(exp);
+    }
+    Ok(var_list)
+}
+
+// transfer function definition to assignment
 fn parse_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    // skip `function`
+    lexer.next_token()?;
+    let mut has_colon = false;
+    let fn_name = _parse_fn_name(lexer, &mut has_colon)?;
+    let mut fn_body = parse_fn_def_exp(lexer)?;
+    // v:name(args) => v.name(self, args)
+    // insert `self` to the first arg
+    // todo: refactor
+    match fn_body {
+        Exp::FnDef {
+            line,
+            last_line,
+            ref mut par_list,
+            is_vararg,
+            ref block,
+        } => {
+            if has_colon {
+                par_list.reverse();
+                par_list.push("self".to_string());
+                par_list.reverse();
+            }
+
+            Ok(Stat::Assign {
+                last_line,
+                var_list: vec![fn_name],
+                exp_list: vec![fn_body],
+            })
+        }
+        _ => unreachable!(),
+    }
+}
+
+// fn_name ::= Name {`.` Name} [`:` Name]
+fn _parse_fn_name(lexer: &mut Lexer, has_colon: &mut bool) -> Result<Exp> {
+    let name = lexer.next_ident()?;
+    let line = lexer.current_line();
+    let mut exp = Box::new(Exp::Name { line, val: name });
+
+    while let Ok(Token::SepDot) = lexer.look_ahead() {
+        lexer.next_token()?;
+        let name = lexer.next_ident()?;
+        let line = lexer.current_line();
+        let idx = Box::new(Exp::String { line, val: name });
+        exp = Box::new(Exp::TableAccess {
+            last_line: line,
+            prefix_exp: exp,
+            key_exp: idx,
+        });
+    }
+
+    // check `:`
+    if let Ok(Token::SepColon) = lexer.look_ahead() {
+        lexer.next_token()?;
+        let name = lexer.next_ident()?;
+        let line = lexer.current_line();
+        *has_colon = true;
+        let idx = Box::new(Exp::String { line, val: name });
+        exp = Box::new(Exp::TableAccess {
+            last_line: line,
+            prefix_exp: exp,
+            key_exp: idx,
+        })
+    }
+
+    Ok(*exp)
 }
 
 /******************* Parse Expression *************************/
 
 fn parse_exp(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_prefix_exp(lexer: &mut Lexer) -> Result<Exp> {
     unimplemented!()
 }
 
@@ -365,8 +489,19 @@ fn is_return_or_block_end(tok: Result<Token>) -> bool {
     }
 }
 
+#[inline]
+fn _check_var(exp: &Exp) -> bool {
+    match exp {
+        Exp::Name { line, val } => true,
+        Exp::TableAccess { last_line, prefix_exp, key_exp } => true,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::any::Any;
+
     use super::*;
 
     #[test]

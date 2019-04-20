@@ -76,6 +76,16 @@ pub enum Stat {
         name: String,
         exp: Exp,
     },
+    // function call is either expression or stat
+    FnCall {
+        line: Line,
+        // line of '('
+        last_line: Line,
+        // line of ')'
+        prefix_exp: Box<Exp>,
+        name_exp: Box<Exp>,
+        args: Vec<Exp>,
+    }
 }
 
 /// Lua Expression
@@ -109,6 +119,7 @@ pub enum Exp {
         line: Line,
         val: String,
     },
+    Parens(Box<Exp>),
     Unop {
         line: Line,
         op: usize,
@@ -124,12 +135,17 @@ pub enum Exp {
         line: Line,
         exps: Vec<Exp>,
     },
-
     TableConstructor {
         line: Line,
         last_line: Line,
         key_exps: Vec<Exp>,
         val_exps: Vec<Exp>,
+    },
+    TableAccess {
+        last_line: Line,
+        // line of ']'
+        prefix_exp: Box<Exp>,
+        key_exp: Box<Exp>,
     },
     FnDef {
         line: Line,
@@ -137,12 +153,6 @@ pub enum Exp {
         par_list: Vec<String>,
         is_vararg: bool,
         block: Box<Block>,
-    },
-    Parens(Box<Exp>),
-    TableAccess {
-        last_line: Line, // line of ']'
-        prefix_exp: Box<Exp>,
-        key_exp: Box<Exp>,
     },
     FnCall {
         line: Line,      // line of '('

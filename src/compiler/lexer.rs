@@ -3,7 +3,6 @@
 
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
-use std::io::Read;
 use std::str;
 
 use regex::bytes::Regex;
