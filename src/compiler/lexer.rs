@@ -270,6 +270,13 @@ impl Lexer {
         }
     }
 
+    pub fn check_next_token(&mut self, tok: Token) -> bool {
+        match self.next_token() {
+            Ok(ref token) if tok == *token => true,
+            _ => false,
+        }
+    }
+
     /// todo: 转义字符串
     fn escape_string(&self, s: &[u8]) -> Result<String> {
         let mut ret: Vec<u8> = vec![];

@@ -22,6 +22,8 @@ pub enum Error {
     NotVarExpression,
     /// Not a operator
     NotOperator,
+    /// Illegal function params
+    IllegalFunction,
 }
 
 /// 包装编译错误信息

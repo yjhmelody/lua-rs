@@ -132,6 +132,7 @@ pub enum Exp {
         exp1: Box<Exp>,
         exp2: Box<Exp>,
     },
+    // right-association, parse it to multi-node tree
     Concat {
         line: Line,
         exps: Vec<Exp>,

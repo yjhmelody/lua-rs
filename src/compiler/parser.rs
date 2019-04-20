@@ -543,7 +543,25 @@ fn parse_exp6(lexer: &mut Lexer) -> Result<Exp> {
 }
 
 fn parse_exp5(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    let exp = parse_exp4(lexer)?;
+    match lexer.look_ahead()? {
+        Token::OpConcat => {
+            let mut line = 0;
+            let mut exps = vec![];
+
+            while let Token::OpConcat = lexer.look_ahead()? {
+                lexer.next_token()?;
+                line = lexer.current_line();
+                exps.push(parse_exp4(lexer)?);
+            }
+
+            Ok(Exp::Concat {
+                line,
+                exps,
+            })
+        }
+        _ => { Ok(exp) }
+    }
 }
 
 fn parse_exp4(lexer: &mut Lexer) -> Result<Exp> {
@@ -554,8 +572,22 @@ fn parse_exp3(lexer: &mut Lexer) -> Result<Exp> {
     unimplemented!()
 }
 
+// unary
 fn parse_exp2(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    match lexer.look_ahead()? {
+        Token::OpNot | Token::OpLen | Token::OpWave | Token::OpMinus => {
+            let op = lexer.next_token()?;
+            let line = lexer.current_line();
+            Ok(
+                Exp::Unop {
+                    line,
+                    op,
+                    exp: Box::new(parse_exp2(lexer)?),
+                }
+            )
+        }
+        _ => Ok(parse_exp1(lexer)?),
+    }
 }
 
 fn parse_exp1(lexer: &mut Lexer) -> Result<Exp> {
@@ -614,22 +646,130 @@ fn parse_number_exp(lexer: &mut Lexer) -> Result<Exp> {
 }
 
 fn parse_table_constructor_exp(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    let line = lexer.current_line();
+    // `{`
+    if !lexer.check_next_token(Token::SepLcurly) {
+        return Err(Error::IllegalExpression);
+    }
+    // [fieldlist]
+    let (key_exps, val_exps) = _parse_field_list(lexer)?;
+
+    // `}`
+    if !lexer.check_next_token(Token::SepRcurly) {
+        return Err(Error::IllegalExpression);
+    }
+
+    let last_line = lexer.current_line();
+    Ok(Exp::TableConstructor {
+        line,
+        last_line,
+        key_exps,
+        val_exps,
+    })
 }
 
 fn parse_fn_def_exp(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    // it has skip `function` keyword
+    let line = lexer.current_line();
+    if !lexer.check_next_token(Token::SepLparen) {
+        return Err(Error::IllegalToken);
+    }
+    let mut is_vararg = false;
+    let par_list = _parse_par_list(lexer, &mut is_vararg)?;
+    if !lexer.check_next_token(Token::SepRparen) {
+        return Err(Error::IllegalToken);
+    }
+    let block = Box::new(parse_block(lexer)?);
+    if !lexer.check_next_token(Token::KwEnd) {
+        return Err(Error::IllegalToken);
+    }
+    let last_line = lexer.current_line();
+    Ok(Exp::FnDef {
+        line,
+        last_line,
+        par_list,
+        is_vararg,
+        block,
+    })
 }
 
+fn _parse_field_list(lexer: &mut Lexer) -> Result<(Vec<Exp>, Vec<Exp>)> {
+    let mut key_exps = vec![];
+    let mut val_exps = vec![];
+    if let Token::SepRcurly = lexer.look_ahead()? {
+        return Ok((key_exps, val_exps));
+    }
+
+    let (k, v) = _parse_field(lexer)?;
+    key_exps.push(k);
+    val_exps.push(v);
+
+    while _is_field_sep(lexer.look_ahead()?) {
+        lexer.next_token()?;
+        // when meet `}`
+        match lexer.look_ahead() {
+            Ok(Token::SepRcurly) => {
+                break;
+            }
+
+            _ => {
+                let (k, v) = _parse_field(lexer)?;
+                key_exps.push(k);
+                val_exps.push(v);
+            }
+        }
+    }
+
+    Ok((key_exps, val_exps))
+}
+
+
+#[inline]
+fn _is_field_sep(tok: Token) -> bool {
+    match tok {
+        Token::SepComma | Token::SepSemi => true,
+        _ => false,
+    }
+}
+
+// field ::= `[` exp `]` `=` exp | Name `=` exp | exp
+fn _parse_field(lexer: &mut Lexer) -> Result<(Exp, Exp)> {}
+
+fn _parse_par_list(lexer: &mut Lexer, is_vararg: &mut bool) -> Result<Vec<String>> {
+    let mut params = vec![];
+    match lexer.look_ahead()? {
+        Token::SepRparen => { return Ok(params); }
+        Token::VarArg => {
+            lexer.next_token()?;
+            *is_vararg = true;
+            return Ok(params);
+        }
+        _ => {}
+    }
+
+    params.push(lexer.next_ident()?);
+    while let Ok(Token::SepComma) = lexer.look_ahead() {
+        lexer.next_token()?;
+        match lexer.look_ahead() {
+            Ok(Token::Identifier(s)) => {
+                params.push(s);
+            }
+            Ok(Token::VarArg) => {
+                *is_vararg = true;
+                break;
+            }
+            _ => {
+                return Err(Error::IllegalFunction);
+            }
+        }
+    }
+    Ok(params)
+}
 
 fn parse_prefix_exp(lexer: &mut Lexer) -> Result<Exp> {
     unimplemented!()
 }
 
-
-fn operator_precedence_parse(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
-}
 
 #[inline]
 fn is_return_or_block_end(tok: Result<Token>) -> bool {
