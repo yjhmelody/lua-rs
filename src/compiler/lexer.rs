@@ -277,8 +277,9 @@ impl Lexer {
         }
     }
 
-    /// todo: 转义字符串
+    /// 转移字符串
     fn escape_string(&self, s: &[u8]) -> Result<String> {
+        // todo: 转义字符串
         let mut ret: Vec<u8> = vec![];
         let mut i = 0;
         while i < s.len() {
