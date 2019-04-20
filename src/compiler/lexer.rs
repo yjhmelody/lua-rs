@@ -262,11 +262,11 @@ impl Lexer {
         }
     }
 
-    /// 返回identifier，若不是则Err
-    pub fn next_ident(&mut self) -> Result<Token> {
+    /// 返回 identifier string，若不是则Err
+    pub fn next_ident(&mut self) -> Result<String> {
         let tok = self.next_token();
         match tok {
-            Ok(Token::Identifier(_)) => tok,
+            Ok(Token::Identifier(s)) => Ok(s),
             _ => Err(Error::NotIdentifier),
         }
     }

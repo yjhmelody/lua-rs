@@ -5,6 +5,7 @@ use crate::compiler::error::*;
 use crate::compiler::lexer::*;
 use crate::compiler::token::Token;
 
+/********************* Parse stat  **********************/
 fn parse_block(lexer: &mut Lexer) -> Result<Block> {
     Ok(Block::new(
         parse_stats(lexer)?,
@@ -105,20 +106,15 @@ fn parse_label_stat(lexer: &mut Lexer) -> Result<Stat> {
     if tok != Token::SepLabel {
         Err(Error::IllegalStat)
     } else {
-        match name {
-            Token::Identifier(name) => Ok(Stat::Label { name }),
-            _ => unreachable!(),
-        }
+        Ok(Stat::Label { name })
     }
 }
 
 fn parse_goto_stat(lexer: &mut Lexer) -> Result<Stat> {
     // skip `goto`
     lexer.next_token()?;
-    match lexer.next_ident()? {
-        Token::Identifier(name) => Ok(Stat::Goto { name }),
-        _ => unreachable!(),
-    }
+    let name = lexer.next_ident()?;
+    Ok(Stat::Goto { name })
 }
 
 fn parse_do_stat(lexer: &mut Lexer) -> Result<Stat> {
@@ -213,12 +209,7 @@ fn parse_if_stat(lexer: &mut Lexer) -> Result<Stat> {
 fn parse_for_stat(lexer: &mut Lexer) -> Result<Stat> {
     lexer.next_token()?;
     let line_of_for = lexer.current_line();
-    let name = match lexer.next_ident() {
-        Ok(Token::Identifier(s)) => s,
-        _ => {
-            return Err(Error::NotIdentifier);
-        }
-    };
+    let name = lexer.next_ident()?;
     if let Ok(Token::OpAssign) = lexer.look_ahead() {
         // =
         _parse_for_num_stat(lexer, line_of_for, name)
@@ -241,7 +232,7 @@ fn _parse_for_num_stat(lexer: &mut Lexer, line_of_for: Line, var_name: String) -
         }
     };
 
-    // optinal exp, default to 1
+    // optional exp, default to 1
     let step_exp = match lexer.look_ahead() {
         Ok(Token::SepComma) => {
             lexer.next_token()?;
@@ -306,13 +297,8 @@ fn _parse_for_in_stat(lexer: &mut Lexer, name: String) -> Result<Stat> {
 
 fn _parse_name_list(lexer: &mut Lexer, name0: String) -> Result<Vec<String>> {
     let mut name_list = vec![name0];
-    while let Ok(Token::SepComma) = lexer.next_token() {
-        let name = match lexer.next_ident() {
-            Ok(Token::Identifier(s)) => s,
-            err => {
-                return Err(Error::NotIdentifier);
-            }
-        };
+    while let Ok(Token::SepComma) = lexer.look_ahead() {
+        let name = lexer.next_ident()?;
         name_list.push(name);
     }
 
@@ -320,10 +306,28 @@ fn _parse_name_list(lexer: &mut Lexer, name0: String) -> Result<Vec<String>> {
 }
 
 fn parse_local_assign_or_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
-    unimplemented!()
+    lexer.next_token()?;
+    match lexer.look_ahead() {
+        Ok(Token::KwFunction) => _parse_local_fn_def_stat(lexer),
+        _ => _parse_local_var_decl_stat(lexer),
+    }
 }
 
-fn prse_assign_or_fn_call_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn _parse_local_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
+    lexer.next_token()?;
+    let name = lexer.next_ident()?;
+    let exp = parse_fn_def_exp(lexer)?;
+    Ok(Stat::LocalFnDef { name, exp })
+}
+
+
+fn _parse_local_var_decl_stat(lexer: &mut Lexer) -> Result<Stat> {
+    let name0 = lexer.next_ident()?;
+    let name_list = _parse_name_list(lexer, name0)?;
+}
+
+
+fn parse_assign_or_fn_call_stat(lexer: &mut Lexer) -> Result<Stat> {
     unimplemented!()
 }
 
@@ -335,7 +339,13 @@ fn parse_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
     unimplemented!()
 }
 
+/******************* Parse Expression *************************/
+
 fn parse_exp(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_fn_def_exp(lexer: &mut Lexer) -> Result<Exp> {
     unimplemented!()
 }
 
