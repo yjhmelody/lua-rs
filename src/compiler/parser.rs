@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::collections::HashMap;
+
 use crate::compiler::ast::*;
 use crate::compiler::error::*;
 use crate::compiler::lexer::*;
@@ -211,10 +213,10 @@ fn parse_for_stat(lexer: &mut Lexer) -> Result<Stat> {
     let line_of_for = lexer.current_line();
     let name = lexer.next_ident()?;
     if let Ok(Token::OpAssign) = lexer.look_ahead() {
-        // =
+        // `=`
         _parse_for_num_stat(lexer, line_of_for, name)
     } else {
-        // in
+        // `in`
         _parse_for_in_stat(lexer, name)
     }
 }
@@ -461,15 +463,171 @@ fn _parse_fn_name(lexer: &mut Lexer, has_colon: &mut bool) -> Result<Exp> {
 
 /******************* Parse Expression *************************/
 
+lazy_static! {
+    static ref op_table: HashMap<&'static str, usize> = {
+        let mut m = HashMap::new();
+        m.insert("or", 1);
+        m.insert("and", 2);
+        m.insert("<", 3);
+        m.insert(">", 3);
+        m.insert("<=", 3);
+        m.insert(">=", 3);
+        m.insert("~=", 3);
+        m.insert("==", 3);
+        m.insert("|", 4);
+        m.insert("~", 5);
+        m.insert("&", 6);
+        m.insert("<<", 7);
+        m.insert(">>", 7);
+        m.insert("..", 8);
+        m.insert("+", 9);
+        m.insert("-", 9);
+        m.insert("*", 10);
+        m.insert("/", 10);
+        m.insert("//", 10);
+        m.insert("%", 10);
+        m.insert("not", 11);
+        m.insert("#", 11);
+        // insert `u` to diff binary ops
+        m.insert("u-", 11);
+        m.insert("u~", 11);
+        m.insert("^", 12);
+
+        m
+    };
+}
+
 fn parse_exp(lexer: &mut Lexer) -> Result<Exp> {
+    parse_exp12(lexer)
+}
+
+fn parse_exp12(lexer: &mut Lexer) -> Result<Exp> {
+    let mut exp = Box::new(parse_exp11(lexer)?);
+    while let Ok(Token::OpOr) = lexer.look_ahead() {
+        let op = lexer.next_token().or(Err(Error::NotOperator))?;
+        let line = lexer.current_line();
+
+        exp = Box::new(Exp::Binop {
+            line,
+            op,
+            exp1: exp,
+            exp2: Box::new(parse_exp11(lexer)?),
+        });
+    }
+
+    Ok(*exp)
+}
+
+fn parse_exp11(lexer: &mut Lexer) -> Result<Exp> {
     unimplemented!()
 }
+
+fn parse_exp10(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_exp9(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_exp8(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_exp7(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_exp6(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_exp5(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_exp4(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_exp3(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_exp2(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_exp1(lexer: &mut Lexer) -> Result<Exp> {
+    let mut exp = Box::new(parse_exp0(lexer)?);
+    if let Ok(Token::OpPow) = lexer.look_ahead() {
+        let op = lexer.next_token().or(Err(Error::NotOperator))?;
+        let line = lexer.current_line();
+        exp = Box::new(Exp::Binop {
+            line,
+            op,
+            exp1: exp,
+            exp2: Box::new(parse_exp2(lexer)?),
+        });
+    }
+    Ok(*exp)
+}
+
+fn parse_exp0(lexer: &mut Lexer) -> Result<Exp> {
+    match lexer.look_ahead()? {
+        Token::VarArg => {
+            lexer.next_token()?;
+            let line = lexer.current_line();
+            Ok(Exp::Vararg { line })
+        }
+        Token::KwNil => {
+            lexer.next_token()?;
+            let line = lexer.current_line();
+            Ok(Exp::Nil { line })
+        }
+        Token::KwTrue => {
+            lexer.next_token()?;
+            let line = lexer.current_line();
+            Ok(Exp::True { line })
+        }
+        Token::KwFalse => {
+            lexer.next_token()?;
+            let line = lexer.current_line();
+            Ok(Exp::False { line })
+        }
+        Token::String(val) => {
+            lexer.next_token()?;
+            let line = lexer.current_line();
+            Ok(Exp::String { line, val })
+        }
+        Token::Number(_) => parse_number_exp(lexer),
+
+        // followings are recursive
+        Token::SepLcurly => parse_table_constructor_exp(lexer),
+        Token::KwFunction => parse_fn_def_exp(lexer),
+        _ => parse_prefix_exp(lexer),
+    }
+}
+
+fn parse_number_exp(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_table_constructor_exp(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
+fn parse_fn_def_exp(lexer: &mut Lexer) -> Result<Exp> {
+    unimplemented!()
+}
+
 
 fn parse_prefix_exp(lexer: &mut Lexer) -> Result<Exp> {
     unimplemented!()
 }
 
-fn parse_fn_def_exp(lexer: &mut Lexer) -> Result<Exp> {
+
+fn operator_precedence_parse(lexer: &mut Lexer) -> Result<Exp> {
     unimplemented!()
 }
 

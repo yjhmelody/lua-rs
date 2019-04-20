@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::compiler::lexer::Line;
+use crate::compiler::token::Token;
 
 /// A Lua chunk also is a Lua block
 #[derive(Debug)]
@@ -122,12 +123,12 @@ pub enum Exp {
     Parens(Box<Exp>),
     Unop {
         line: Line,
-        op: usize,
+        op: Token,
         exp: Box<Exp>,
     },
     Binop {
         line: Line,
-        op: usize,
+        op: Token,
         exp1: Box<Exp>,
         exp2: Box<Exp>,
     },

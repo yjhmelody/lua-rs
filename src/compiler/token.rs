@@ -6,7 +6,7 @@ pub enum Token {
     /// End of file
     Eof,
     /// ...
-    Vararg,
+    VarArg,
     /// ;
     SepSemi,
     /// ,

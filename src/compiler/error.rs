@@ -20,6 +20,8 @@ pub enum Error {
     NotIdentifier,
     /// Not a var expression
     NotVarExpression,
+    /// Not a operator
+    NotOperator,
 }
 
 /// 包装编译错误信息

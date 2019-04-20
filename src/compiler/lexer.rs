@@ -225,7 +225,7 @@ impl Lexer {
             }
             b'.' if self.test("...") => {
                 self.next(3);
-                Ok(Token::Vararg)
+                Ok(Token::VarArg)
             }
             b'.' if self.test("..") => {
                 self.next(2);
