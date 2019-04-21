@@ -42,21 +42,17 @@ fn parse_ret_exps(lexer: &mut Lexer) -> Result<Vec<Exp>> {
     };
     // skip `return`
     lexer.next_token()?;
-    match lexer.look_ahead()? {
-        Token::Eof | Token::KwElse | Token::KwElseIf | Token::KwEnd | Token::KwUntil => Ok(vec![]),
-        Token::SepSemi => {
+    match lexer.look_ahead() {
+        Err(Error::EOF) | Ok(Token::KwElse) | Ok(Token::KwElseIf) | Ok(Token::KwEnd) | Ok(Token::KwUntil) => Ok(vec![]),
+        Ok(Token::SepSemi) => {
             lexer.next_token()?;
             Ok(vec![])
         }
         _ => {
             let exps = parse_exp_list(lexer);
-            match lexer.look_ahead() {
-                Ok(Token::SepSemi) => {
-                    lexer.next_token()?;
-                }
-                _ => {}
-            };
-
+            if let Ok(Token::SepSemi) = lexer.look_ahead() {
+                lexer.next_token()?;
+            }
             exps
         }
     }
@@ -65,7 +61,7 @@ fn parse_ret_exps(lexer: &mut Lexer) -> Result<Vec<Exp>> {
 fn parse_exp_list(lexer: &mut Lexer) -> Result<Vec<Exp>> {
     let mut exp_list = vec![];
     exp_list.push(parse_exp(lexer)?);
-    while let Ok(Token::SepSemi) = lexer.look_ahead() {
+    while let Ok(Token::SepComma) = lexer.look_ahead() {
         lexer.next_token()?;
         exp_list.push(parse_exp(lexer)?);
     }
@@ -510,6 +506,9 @@ fn parse_exp7(lexer: &mut Lexer) -> Result<Exp> {
 }
 
 fn parse_exp6(lexer: &mut Lexer) -> Result<Exp> {
+    let exp = parse_exp5(lexer)?;
+//    match lexer.look_ahead()? {
+//    }
     unimplemented!()
 }
 
@@ -737,15 +736,12 @@ fn _parse_par_list(lexer: &mut Lexer, is_vararg: &mut bool) -> Result<Vec<String
 #[inline]
 fn _is_return_or_block_end(tok: Result<Token>) -> bool {
     match tok {
-        Ok(tok) => match tok {
-            Token::Eof
-            | Token::KwReturn
-            | Token::KwEnd
-            | Token::KwElse
-            | Token::KwElseIf
-            | Token::KwUntil => true,
-            _ => false,
-        },
+        Err(Error::EOF)
+        | Ok(Token::KwReturn)
+        | Ok(Token::KwEnd)
+        | Ok(Token::KwElse)
+        | Ok(Token::KwElseIf)
+        | Ok(Token::KwUntil) => true,
         _ => false,
     }
 }

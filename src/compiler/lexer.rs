@@ -149,7 +149,7 @@ impl Lexer {
         let ch = match self.current() {
             Some(ch) => ch,
             None => {
-                return Ok(Token::Eof);
+                return Err(Error::EOF);
             }
         };
 
@@ -575,7 +575,7 @@ mod tests {
         assert_eq!(res.unwrap(), Token::Identifier("name".to_string()));
         assert_eq!(lexer.current_line(), 12);
 
-        assert_eq!(lexer.next_token().unwrap(), Token::Eof);
+        assert_eq!(lexer.next_token(), Err(Error::EOF));
         assert_eq!(lexer.current_line(), 13);
     }
 }
