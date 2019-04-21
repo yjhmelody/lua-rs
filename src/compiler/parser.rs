@@ -4,10 +4,11 @@ use std::collections::HashMap;
 
 use crate::compiler::ast::*;
 use crate::compiler::error::*;
+use crate::compiler::error::Error::NotMatchBrackets;
 use crate::compiler::lexer::*;
 use crate::compiler::token::Token;
 
-fn parse(lexer: &mut Lexer) -> Block {
+pub fn parse(lexer: &mut Lexer) -> Block {
     // todo: handler all errors in this function?
     unimplemented!()
 }
@@ -59,6 +60,7 @@ fn parse_ret_exps(lexer: &mut Lexer) -> Result<Vec<Exp>> {
 }
 
 fn parse_exp_list(lexer: &mut Lexer) -> Result<Vec<Exp>> {
+    // exp {, exp}
     let mut exp_list = vec![];
     exp_list.push(parse_exp(lexer)?);
     while let Ok(Token::SepComma) = lexer.look_ahead() {
@@ -69,7 +71,7 @@ fn parse_exp_list(lexer: &mut Lexer) -> Result<Vec<Exp>> {
     Ok(exp_list)
 }
 
-/********************* Parse stat  **********************/
+/********************* Parse Statement  **********************/
 
 fn parse_stat(lexer: &mut Lexer) -> Result<Stat> {
     match lexer.look_ahead()? {
@@ -85,7 +87,7 @@ fn parse_stat(lexer: &mut Lexer) -> Result<Stat> {
         Token::KwFor => parse_for_stat(lexer),
         Token::KwFunction => parse_fn_def_stat(lexer),
         Token::KwLocal => parse_local_assign_or_fn_def_stat(lexer),
-        _ => unimplemented!(),
+        _ => parse_assign_or_fn_call_stat(lexer),
     }
 }
 
@@ -377,7 +379,7 @@ fn parse_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
 
 fn _parse_var_list(lexer: &mut Lexer, var0: Exp) -> Result<Vec<Exp>> {
     let mut var_list = vec![];
-    if _check_var(&var0) {
+    if _is_var_exp(&var0) {
         var_list.push(var0);
     } else {
         return Err(Error::NotVarExpression);
@@ -732,7 +734,11 @@ fn parse_exp0(lexer: &mut Lexer) -> Result<Exp> {
     }
 }
 
+/******************* Parse Primary *************************/
+
 fn parse_number_exp(lexer: &mut Lexer) -> Result<Exp> {
+    let num = lexer.next_token()?;
+    // todo: impl number parser
     unimplemented!()
 }
 
@@ -785,10 +791,171 @@ fn parse_fn_def_exp(lexer: &mut Lexer) -> Result<Exp> {
 }
 
 fn parse_prefix_exp(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    let exp;
+    if let Token::Identifier(val) = lexer.look_ahead()? {
+        let id = lexer.next_token()?;
+        let line = lexer.current_line();
+        exp = Exp::Name { line, val };
+    } else {
+        // `(` exp `)`
+        exp = parse_parens_exp(lexer)?;
+    }
+
+    let mut exp = Box::new(exp);
+    loop {
+        match lexer.look_ahead() {
+            Ok(Token::SepLbrack) => {
+                lexer.next_token()?;
+                let key_exp = Box::new(parse_exp(lexer)?);
+                if !lexer.check_next_token(Token::SepRbrack) {
+                    return Err(Error::NotMatchBrackets);
+                }
+                let last_line = lexer.current_line();
+
+                exp = Box::new(Exp::TableAccess {
+                    last_line,
+                    prefix_exp: exp,
+                    key_exp,
+                })
+            }
+            Ok(Token::SepDot) => {
+                lexer.next_token()?;
+                let name = lexer.next_ident()?;
+                let line = lexer.current_line();
+                let key_exp = Box::new(Exp::String { line, val: name });
+
+                let last_line = line;
+                exp = Box::new(Exp::TableAccess {
+                    last_line,
+                    prefix_exp: exp,
+                    key_exp,
+                });
+            }
+            Ok(Token::SepColon)
+            | Ok(Token::SepLparen)
+            | Ok(Token::SepLcurly)
+            | Ok(Token::String(_)) => {
+                // [`:` Name] args
+                exp = Box::new(_parse_fn_call_exp(lexer, exp)?);
+            }
+
+            _ => { return Ok(*exp); }
+        }
+    }
 }
 
-fn _parse_field_list(lexer: &mut Lexer) -> Result<(Vec<Exp>, Vec<Exp>)> {
+fn parse_parens_exp(lexer: &mut Lexer) -> Result<Exp> {
+    if !lexer.check_next_token(Token::SepLparen) {
+        return Err(Error::IllegalExpression);
+    }
+    let exp = parse_exp(lexer)?;
+
+    if !lexer.check_next_token(Token::SepRparen) {
+        return Err(Error::NotMatchBrackets);
+    }
+
+    // The semantics of vararg and fn call will be changed by parens
+    let exp = match exp {
+        exp @ Exp::Vararg {
+            line: _
+        } => Exp::Parens(Box::new(exp)),
+
+        exp @ Exp::FnCall {
+            line: _,
+            last_line: _,
+            prefix_exp: _,
+            name_exp: _,
+            args: _,
+        } => Exp::Parens(Box::new(exp)),
+
+        exp @ Exp::Name {
+            line: _,
+            val: _
+        } => Exp::Parens(Box::new(exp)),
+
+        exp @ Exp::TableAccess {
+            last_line: _,
+            prefix_exp: _,
+            key_exp: _,
+        } => Exp::Parens(Box::new(exp)),
+
+        _ => exp,
+    };
+
+    Ok(exp)
+}
+
+fn _parse_fn_call_exp(lexer: &mut Lexer, prefix_exp: Box<Exp>) -> Result<Exp> {
+    // [`:` Name]
+    let name_exp = _parse_fn_name_exp(lexer).ok();
+    let line = lexer.current_line();
+    // args
+    let args = _parse_fn_call_args(lexer)?;
+    let last_line = lexer.current_line();
+
+    Ok(Exp::FnCall {
+        line,
+        last_line,
+        prefix_exp,
+        name_exp,
+        args,
+    })
+}
+
+fn _parse_fn_name_exp(lexer: &mut Lexer) -> Result<Box<Exp>> {
+    if let Token::SepColon = lexer.look_ahead()? {
+        lexer.next_token()?;
+        let val = lexer.next_ident()?;
+        let line = lexer.current_line();
+        Ok(Box::new(Exp::String {
+            line,
+            val,
+        }))
+    } else {
+        // just represent a option token
+        Err(Error::NoMoreTokens)
+    }
+}
+
+fn _parse_fn_call_args(lexer: &mut Lexer) -> Result<Vec<Exp>> {
+    match lexer.look_ahead()? {
+        // (arg1, arg2 ...)
+        Token::SepLparen => {
+            lexer.next_token()?;
+            if let Token::SepRparen = lexer.look_ahead()? {
+                lexer.next_token()?;
+                Ok(vec![])
+            } else {
+                let exp = parse_exp_list(lexer);
+                if !lexer.check_next_token(Token::SepRparen) {
+                    Err(Error::NotMatchBrackets)
+                } else {
+                    exp
+                }
+            }
+        }
+
+        // function print_prices(table)
+        //   print("The clothes costs " .. table.medium)
+        //end
+        Token::SepLcurly => {
+            Ok(vec![parse_table_constructor_exp(lexer)?])
+        }
+
+        // LiteralString:  print "2" "3" "3"
+        Token::String(val) => {
+            lexer.next_token()?;
+            let line = lexer.current_line();
+            Ok(vec![Exp::String { line, val }])
+        }
+
+        _ => {
+            Err(Error::IllegalFnCall)
+        }
+    }
+}
+
+fn _parse_field_list(lexer: &mut Lexer) -> Result<(Vec<Option<Exp>>, Vec<Exp>)> {
     let mut key_exps = vec![];
     let mut val_exps = vec![];
     if let Token::SepRcurly = lexer.look_ahead()? {
@@ -802,8 +969,8 @@ fn _parse_field_list(lexer: &mut Lexer) -> Result<(Vec<Exp>, Vec<Exp>)> {
     while _is_field_sep(lexer.look_ahead()?) {
         lexer.next_token()?;
         // when meet `}`
-        match lexer.look_ahead() {
-            Ok(Token::SepRcurly) => {
+        match lexer.look_ahead()? {
+            Token::SepRcurly => {
                 break;
             }
 
@@ -818,9 +985,34 @@ fn _parse_field_list(lexer: &mut Lexer) -> Result<(Vec<Exp>, Vec<Exp>)> {
     Ok((key_exps, val_exps))
 }
 
-fn _parse_field(lexer: &mut Lexer) -> Result<(Exp, Exp)> {
+fn _parse_field(lexer: &mut Lexer) -> Result<(Option<Exp>, Exp)> {
     // field ::= `[` exp `]` `=` exp | Name `=` exp | exp
-    unimplemented!()
+    if let Token::SepLbrack = lexer.look_ahead()? {
+        lexer.next_token()?;
+        let key = parse_exp(lexer)?;
+        if !lexer.check_next_token(Token::SepRbrack) {
+            return Err(Error::NotMatchBrackets);
+        }
+        if !lexer.check_next_token(Token::OpAssign) {
+            return Err(Error::MissingAssignment);
+        }
+
+        let val = parse_exp(lexer)?;
+        return Ok((Some(key), val));
+    }
+
+    // `key` or `value`
+    let exp = parse_exp(lexer)?;
+    if let Exp::Name { line, ref val } = exp {
+        if let Ok(Token::OpAssign) = lexer.look_ahead() {
+            lexer.next_token()?;
+            let key = Exp::String { line, val: val.to_string() };
+            let val = parse_exp(lexer)?;
+            return Ok((Some(key), val));
+        }
+    }
+
+    Ok((None, exp))
 }
 
 fn _parse_par_list(lexer: &mut Lexer, is_vararg: &mut bool) -> Result<Vec<String>> {
@@ -868,10 +1060,10 @@ fn _is_return_or_block_end(tok: Result<Token>) -> bool {
 }
 
 #[inline]
-fn _check_var(exp: &Exp) -> bool {
+fn _is_var_exp(exp: &Exp) -> bool {
     match exp {
-        Exp::Name { line, val } => true,
-        Exp::TableAccess { last_line, prefix_exp, key_exp } => true,
+        Exp::Name { line: _, val: _ } => true,
+        Exp::TableAccess { last_line: _, prefix_exp: _, key_exp: _ } => true,
         _ => false,
     }
 }

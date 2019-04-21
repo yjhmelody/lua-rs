@@ -84,7 +84,7 @@ pub enum Stat {
         last_line: Line,
         // line of ')'
         prefix_exp: Box<Exp>,
-        name_exp: Box<Exp>,
+        name_exp: Option<Box<Exp>>,
         args: Vec<Exp>,
     }
 }
@@ -140,7 +140,8 @@ pub enum Exp {
     TableConstructor {
         line: Line,
         last_line: Line,
-        key_exps: Vec<Exp>,
+        /// key can be omitted
+        key_exps: Vec<Option<Exp>>,
         val_exps: Vec<Exp>,
     },
     TableAccess {
@@ -160,7 +161,7 @@ pub enum Exp {
         line: Line,      // line of '('
         last_line: Line, // line of ')'
         prefix_exp: Box<Exp>,
-        name_exp: Box<Exp>,
+        name_exp: Option<Box<Exp>>,
         args: Vec<Exp>,
     },
 }

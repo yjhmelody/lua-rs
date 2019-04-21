@@ -24,6 +24,12 @@ pub enum Error {
     NotOperator,
     /// Illegal function params
     IllegalFunction,
+    /// Brackets do not match
+    NotMatchBrackets,
+    /// Missing assignment
+    MissingAssignment,
+    /// Illegal Function call
+    IllegalFnCall
 }
 
 /// 包装编译错误信息
