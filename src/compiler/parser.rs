@@ -469,6 +469,7 @@ fn parse_exp(lexer: &mut Lexer) -> Result<Exp> {
 }
 
 fn parse_exp12(lexer: &mut Lexer) -> Result<Exp> {
+    // x or y
     let mut exp = Box::new(parse_exp11(lexer)?);
     while let Ok(Token::OpOr) = lexer.look_ahead() {
         let op = lexer.next_token().or(Err(Error::NotOperator))?;
@@ -486,33 +487,115 @@ fn parse_exp12(lexer: &mut Lexer) -> Result<Exp> {
 }
 
 fn parse_exp11(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    // x and y
+    let mut exp = Box::new(parse_exp10(lexer)?);
+    while let Token::OpAnd = lexer.look_ahead()? {
+        let op = lexer.next_token()?;
+        let line = lexer.current_line();
+        exp = Box::new(Exp::Binop {
+            line,
+            op,
+            exp1: exp,
+            exp2: Box::new(parse_exp10(lexer)?),
+        });
+    }
+    Ok(*exp)
 }
 
 fn parse_exp10(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    // x `cmp` y
+    let mut exp = Box::new(parse_exp9(lexer)?);
+    loop {
+        match lexer.look_ahead()? {
+            Token::OpGe | Token::OpGt | Token::OpLe | Token::OpLt | Token::OpNe | Token::OPEq => {
+                let op = lexer.next_token()?;
+                let line = lexer.current_line();
+                exp = Box::new(Exp::Binop {
+                    line,
+                    op,
+                    exp1: exp,
+                    exp2: Box::new(parse_exp9(lexer)?),
+                });
+            }
+            _ => { break; }
+        }
+    }
+
+    Ok(*exp)
 }
 
 fn parse_exp9(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    // x | y
+    let mut exp = Box::new(parse_exp8(lexer)?);
+    while let Token::OpBitOr = lexer.look_ahead()? {
+        let op = lexer.next_token()?;
+        let line = lexer.current_line();
+        exp = Box::new(Exp::Binop {
+            line,
+            op,
+            exp1: exp,
+            exp2: Box::new(parse_exp8(lexer)?),
+        });
+    }
+    Ok(*exp)
 }
 
 fn parse_exp8(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    // x ~ y
+    let mut exp = Box::new(parse_exp7(lexer)?);
+    while let Token::OpWave = lexer.look_ahead()? {
+        let op = lexer.next_token()?;
+        let line = lexer.current_line();
+        exp = Box::new(Exp::Binop {
+            line,
+            op,
+            exp1: exp,
+            exp2: Box::new(parse_exp7(lexer)?),
+        });
+    }
+    Ok(*exp)
 }
 
 fn parse_exp7(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    // x & y
+    let mut exp = Box::new(parse_exp6(lexer)?);
+    while let Token::OpBitAnd = lexer.look_ahead()? {
+        let op = lexer.next_token()?;
+        let line = lexer.current_line();
+        exp = Box::new(Exp::Binop {
+            line,
+            op,
+            exp1: exp,
+            exp2: Box::new(parse_exp6(lexer)?),
+        });
+    }
+    Ok(*exp)
 }
 
 fn parse_exp6(lexer: &mut Lexer) -> Result<Exp> {
-    let exp = parse_exp5(lexer)?;
-//    match lexer.look_ahead()? {
-//    }
-    unimplemented!()
+    // x >>/<< y
+    let mut exp = Box::new(parse_exp5(lexer)?);
+    loop {
+        match lexer.look_ahead()? {
+            Token::OpShl | Token::OpShr => {
+                let op = lexer.next_token()?;
+                let line = lexer.current_line();
+                exp = Box::new(Exp::Binop {
+                    line,
+                    op,
+                    exp1: exp,
+                    exp2: Box::new(parse_exp5(lexer)?),
+                });
+            }
+            _ => { break; }
+        }
+    }
+
+    Ok(*exp)
 }
 
 fn parse_exp5(lexer: &mut Lexer) -> Result<Exp> {
+    // x .. y
     let exp = parse_exp4(lexer)?;
     match lexer.look_ahead()? {
         Token::OpConcat => {
@@ -535,15 +618,51 @@ fn parse_exp5(lexer: &mut Lexer) -> Result<Exp> {
 }
 
 fn parse_exp4(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    // x +/- y
+    let mut exp = Box::new(parse_exp3(lexer)?);
+    loop {
+        match lexer.look_ahead()? {
+            Token::OpAdd | Token::OpMinus => {
+                let op = lexer.next_token()?;
+                let line = lexer.current_line();
+                exp = Box::new(Exp::Binop {
+                    line,
+                    op,
+                    exp1: exp,
+                    exp2: Box::new(parse_exp3(lexer)?),
+                });
+            }
+            _ => { break; }
+        }
+    }
+
+    Ok(*exp)
 }
 
 fn parse_exp3(lexer: &mut Lexer) -> Result<Exp> {
-    unimplemented!()
+    // *  %  /  //
+    let mut exp = Box::new(parse_exp5(lexer)?);
+    loop {
+        match lexer.look_ahead()? {
+            Token::OpMul | Token::OpDiv | Token::OpIDiv | Token::OpMod => {
+                let op = lexer.next_token()?;
+                let line = lexer.current_line();
+                exp = Box::new(Exp::Binop {
+                    line,
+                    op,
+                    exp1: exp,
+                    exp2: Box::new(parse_exp5(lexer)?),
+                });
+            }
+            _ => { break; }
+        }
+    }
+
+    Ok(*exp)
 }
 
 fn parse_exp2(lexer: &mut Lexer) -> Result<Exp> {
-    // parse unary ops
+    // unary ops: not # - ~
     match lexer.look_ahead()? {
         Token::OpNot | Token::OpLen | Token::OpWave | Token::OpMinus => {
             let op = lexer.next_token()?;
@@ -561,6 +680,7 @@ fn parse_exp2(lexer: &mut Lexer) -> Result<Exp> {
 }
 
 fn parse_exp1(lexer: &mut Lexer) -> Result<Exp> {
+    // x ^ y
     let mut exp = Box::new(parse_exp0(lexer)?);
     if let Ok(Token::OpPow) = lexer.look_ahead() {
         let op = lexer.next_token().or(Err(Error::NotOperator))?;
@@ -576,6 +696,7 @@ fn parse_exp1(lexer: &mut Lexer) -> Result<Exp> {
 }
 
 fn parse_exp0(lexer: &mut Lexer) -> Result<Exp> {
+    // primary
     match lexer.look_ahead()? {
         Token::VarArg => {
             lexer.next_token()?;
