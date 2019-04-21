@@ -137,6 +137,11 @@ impl Lexer {
         self.next(1);
         Ok(token)
     }
+
+    pub fn skip_next_token(&mut self) {
+        let _tok = self.next_token();
+    }
+
     /// 返回下一个token
     pub fn next_token(&mut self) -> Result<Token> {
         if self.next_line > 0 {
@@ -233,9 +238,9 @@ impl Lexer {
             }
             b'.' if self.index + 1 == self.chunk.len()
                 || !self.chunk[self.index + 1].is_ascii_digit() =>
-            {
-                self.simple_token(Token::SepDot)
-            }
+                {
+                    self.simple_token(Token::SepDot)
+                }
             b'[' => {
                 if self.test("[[") || self.test("[=") {
                     Ok(Token::String(self.scan_long_string()?))
@@ -399,8 +404,6 @@ impl Lexer {
 
     /// 扫描数字
     fn scan_number(&mut self) -> Result<String> {
-        use std::str;
-
         let text = &self.chunk[self.index..];
         let s = re_number.find(text).ok_or(Error::IllegalToken)?.as_bytes();
         self.index += s.len();
@@ -523,7 +526,7 @@ mod tests {
             break
             name
         "##
-        .to_string();
+            .to_string();
 
         let mut lexer = Lexer::from_iter(s.bytes(), "test".to_string());
 
