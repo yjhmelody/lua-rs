@@ -5,9 +5,10 @@ use crate::compiler::error::*;
 use crate::compiler::lexer::*;
 use crate::compiler::token::Token;
 
-pub fn parse(lexer: &mut Lexer) {
+/// parse gets a lexer and returns a Lua Block which is Lua AST
+pub fn parse(lexer: &mut Lexer) -> Block {
     // todo: handler all errors in this function?
-    parse_block(lexer);
+    parse_block(lexer).unwrap()
 }
 
 fn parse_block(lexer: &mut Lexer) -> Result<Block> {
@@ -1091,6 +1092,7 @@ mod tests {
         "##.to_string();
 
         let mut lexer = Lexer::from_iter(s.bytes(), "test".to_string());
-        parse(&mut lexer);
+        let block = parse(&mut lexer);
+        println!("{:#?}", block);
     }
 }

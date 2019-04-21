@@ -1,7 +1,7 @@
 use std::result;
 
-// todo: 传递错误位置信息
-/// 编译期间产生的错误
+// todo: better error reports
+/// Some Errors produced by parser and lexer which be dealt by parser for reporting syntax errors
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Error {
     /// Need more bytes
@@ -29,8 +29,8 @@ pub enum Error {
     /// Missing assignment
     MissingAssignment,
     /// Illegal Function call
-    IllegalFnCall
+    IllegalFnCall,
 }
 
-/// 包装编译错误信息
+/// Wrapped for parsing time errors
 pub type Result<T> = result::Result<T, Error>;

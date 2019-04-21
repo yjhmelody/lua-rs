@@ -5,121 +5,121 @@
 pub enum Token {
     /// End of file
     Eof,
-    /// ...
+    /// `...`
     VarArg,
-    /// ;
+    /// `;`
     SepSemi,
-    /// ,
+    /// `,`
     SepComma,
-    /// .
+    /// `.`
     SepDot,
-    /// :
+    /// `:`
     SepColon,
-    /// ::
+    /// `::`
     SepLabel,
-    /// (
+    /// `(`
     SepLparen,
-    /// )
+    /// `)`
     SepRparen,
-    /// [
+    /// `[`
     SepLbrack,
-    /// ]
+    /// `]`
     SepRbrack,
-    /// {
+    /// `{`
     SepLcurly,
-    /// }
+    /// `}`
     SepRcurly,
-    /// =
+    /// `=`
     OpAssign,
-    /// - (sub or unm)
+    /// `-` (sub or unm)
     OpMinus,
-    /// ~ (bnot or bxor)
+    /// `~` (bnot or bxor)
     OpWave,
-    /// +
+    /// `+`
     OpAdd,
-    /// *
+    /// `*`
     OpMul,
-    /// /
+    /// `/`
     OpDiv,
-    /// //
+    /// `//`
     OpIDiv,
-    /// ^
+    /// `^`
     OpPow,
-    /// %
+    /// `%`
     OpMod,
-    /// &
+    /// `&`
     OpBitAnd,
-    /// |
+    /// `|`
     OpBitOr,
-    /// >>
+    /// `>>`
     OpShr,
-    /// <<
+    /// `<<`
     OpShl,
-    /// ..
+    /// `..`
     OpConcat,
-    /// <
+    /// `<`
     OpLt,
-    /// <=
+    /// `<=`
     OpLe,
-    /// >
+    /// `>`
     OpGt,
-    /// >=
+    /// `>=`
     OpGe,
-    /// ==
+    /// `==`
     OPEq,
-    /// ~=
+    /// `~=`
     OpNe,
-    /// #
+    /// `#`
     OpLen,
-    /// and
+    /// `and`
     OpAnd,
-    /// or
+    /// `or`
     OpOr,
-    /// not
+    /// `not`
     OpNot,
-    /// break
+    /// `break`
     KwBreak,
-    /// do
+    /// `do`
     KwDo,
-    /// else
+    /// `else`
     KwElse,
-    /// elseif
+    /// `elseif`
     KwElseIf,
-    /// end
+    /// `end`
     KwEnd,
-    /// false
+    /// `false`
     KwFalse,
-    /// for
+    /// `for`
     KwFor,
-    /// function
+    /// `function`
     KwFunction,
-    /// goto
+    /// `goto`
     KwGoto,
-    /// if
+    /// `if`
     KwIf,
-    /// in
+    /// `in`
     KwIn,
-    /// local
+    /// `local`
     KwLocal,
-    /// nil
+    /// `nil`
     KwNil,
-    /// repeat
+    /// `repeat`
     KwRepeat,
-    /// return
+    /// `return`
     KwReturn,
-    /// then
+    /// `then`
     KwThen,
-    /// true
+    /// `true`
     KwTrue,
-    /// until
+    /// `until`
     KwUntil,
-    /// while
+    /// `while`
     KwWhile,
-    /// `id`
+    /// __id__
     Identifier(String),
-    /// `number`
+    /// __number__
     Number(String),
     //todo: impl string to number
-    /// `string`
+    /// __string__
     String(String),
 }

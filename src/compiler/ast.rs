@@ -12,6 +12,7 @@ pub struct Block {
 }
 
 impl Block {
+    /// Creates a Lua Block, which is also a Lua Chunk
     #[inline]
     pub fn new(stats: Vec<Stat>, ret_exps: Vec<Exp>, last_line: Line) -> Self {
         Self {
@@ -22,7 +23,7 @@ impl Block {
     }
 }
 
-/// Lua stat, including Lua expression
+/// Lua statement, including some Lua expression
 #[derive(Debug)]
 pub enum Stat {
     Empty,
