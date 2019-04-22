@@ -192,19 +192,12 @@ fn parse_if_stat(lexer: &mut Lexer) -> Result<Stat> {
         };
     }
 
-    // else
+    // else -> elseif true
     if let Ok(Token::KwElse) = lexer.look_ahead() {
         lexer.skip_next_token();
-        // todo
-        exps.push(parse_exp(lexer)?);
-        match lexer.next_token() {
-            Ok(Token::KwThen) => {
-                blocks.push(parse_block(lexer)?);
-            }
-            _ => {
-                return Err(Error::IllegalStat { line: lexer.current_line() });
-            }
-        };
+        exps.push(Exp::True { line: lexer.current_line() });
+        // demo: if false then elseif false then else end
+        blocks.push(parse_block(lexer)?);
     }
 
     Ok(Stat::If { exps, blocks })
@@ -787,7 +780,6 @@ fn parse_fn_def_exp(lexer: &mut Lexer) -> Result<Exp> {
         return Err(Error::IllegalToken {
             line,
         });
-
     }
     let mut is_vararg = false;
     let par_list = _parse_par_list(lexer, &mut is_vararg)?;
@@ -1114,6 +1106,13 @@ mod tests {
     #[test]
     fn test_parse() {
         let s = r##"
+        function preloadSearcher(modname)
+          if package.preload[modname] ~= nil then
+            return package.preload[modname]
+          else
+            return
+          end
+        end
         package.preload.mymod = function(modname)
           local loader = function(modname, extra)
             print("loading")

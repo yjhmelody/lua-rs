@@ -47,6 +47,7 @@ pub enum Stat {
         exp: Exp,
         block: Box<Block>,
     },
+    /// exps stores conditions. compile `else` to `elseif true`
     If {
         exps: Vec<Exp>,
         blocks: Vec<Block>,
