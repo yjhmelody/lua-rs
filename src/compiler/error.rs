@@ -1,35 +1,46 @@
 use std::result;
 
+use crate::compiler::lexer::Line;
+use crate::compiler::token::Token;
+
 // todo: better error reports
 /// Some Errors produced by parser and lexer which be dealt by parser for reporting syntax errors
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Error {
     /// Need more bytes
-    EOF,
+    EOF { line: Line },
+    /// Illegal Identifier
+    IllegalIdentifier { line: Line },
+    /// Illegal Number Literal
+    IllegalNumLiteral { line: Line },
+    /// Illegal String
+    IllegalString { line: Line },
     /// Illegal Token
-    IllegalToken,
+    IllegalToken { line: Line },
     /// Cannot be Escaped
-    IllegalEscape,
+    IllegalEscape { line: Line },
     /// Need more Tokens
-    NoMoreTokens,
+    NoMoreTokens { line: Line },
     /// Illegal Expression
-    IllegalExpression,
+    IllegalExpression { line: Line },
     /// Illegal Expression
-    IllegalStat,
+    IllegalStat { line: Line },
     /// Not a Identifier
-    NotIdentifier,
+    NotIdentifier { line: Line },
     /// Not a var expression
-    NotVarExpression,
+    NotVarExpression { line: Line },
     /// Not a operator
-    NotOperator,
+    NotOperator { line: Line },
     /// Illegal function params
-    IllegalFunction,
+    IllegalFunction { line: Line },
     /// Brackets do not match
-    NotMatchBrackets,
+    NotMatchBrackets { line: Line },
     /// Missing assignment
-    MissingAssignment,
+    MissingAssignment { line: Line },
     /// Illegal Function call
-    IllegalFnCall,
+    IllegalFnCall { line: Line },
+    /// Illegal Function definition
+    IllegalFnDef { line: Line },
 }
 
 /// Wrapped for parsing time errors

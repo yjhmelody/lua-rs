@@ -92,7 +92,7 @@ impl Lexer {
             index: 0,
             chunk_name,
             line: 1,
-            next_tok: Err(Error::IllegalToken),
+            next_tok: Err(Error::IllegalToken { line: 1 }),
             next_line: 0,
         }
     }
@@ -106,7 +106,7 @@ impl Lexer {
             index: 0,
             chunk_name,
             line: 1,
-            next_tok: Err(Error::IllegalToken),
+            next_tok: Err(Error::IllegalToken { line: 1 }),
             next_line: 0,
         }
     }
@@ -154,7 +154,7 @@ impl Lexer {
         let ch = match self.current() {
             Some(ch) => ch,
             None => {
-                return Err(Error::EOF);
+                return Err(Error::EOF { line: self.current_line() });
             }
         };
 
@@ -260,7 +260,8 @@ impl Lexer {
                         Some(tok) => Ok(tok.clone()),
                     }
                 } else {
-                    Err(Error::IllegalToken)
+                    let line = self.current_line();
+                    Err(Error::IllegalToken { line: line })
                 }
             }
         }
@@ -271,7 +272,7 @@ impl Lexer {
         let tok = self.next_token();
         match tok {
             Ok(Token::Identifier(s)) => Ok(s),
-            _ => Err(Error::NotIdentifier),
+            _ => Err(Error::NotIdentifier { line: self.current_line() }),
         }
     }
 
@@ -295,7 +296,7 @@ impl Lexer {
             }
 
             if i + 1 == s.len() {
-                return Err(Error::IllegalEscape);
+                return Err(Error::IllegalEscape { line: self.current_line() });
             } else {
                 match s[i + 1] {
                     b'a' => {
@@ -335,11 +336,11 @@ impl Lexer {
                     ch if ch.is_ascii_digit() => {
                         let num = re_dec_escaped_seq
                             .find(&s[i + 1..])
-                            .ok_or(Error::IllegalEscape)?
+                            .ok_or(Error::IllegalEscape { line: self.current_line() })?
                             .as_bytes();
-                        let num = str::from_utf8(num).or(Err(Error::IllegalEscape))?;
+                        let num = str::from_utf8(num).or(Err(Error::IllegalEscape { line: self.current_line() }))?;
                         let len = num.len() + 1;
-                        let num = num.parse::<u8>().or(Err(Error::IllegalEscape))?;
+                        let num = num.parse::<u8>().or(Err(Error::IllegalEscape { line: self.current_line() }))?;
                         ret.push(num);
                         i += len;
                     }
@@ -348,10 +349,10 @@ impl Lexer {
                     b'x' => {
                         let num = re_hex_escaped_seq
                             .find(&s[i + 2..])
-                            .ok_or(Error::IllegalEscape)?
+                            .ok_or(Error::IllegalEscape { line: self.current_line() })?
                             .as_bytes();
-                        let num = str::from_utf8(num).or(Err(Error::IllegalEscape))?;
-                        let num = num.parse::<u8>().or(Err(Error::IllegalEscape))?;
+                        let num = str::from_utf8(num).or(Err(Error::IllegalEscape { line: self.current_line() }))?;
+                        let num = num.parse::<u8>().or(Err(Error::IllegalEscape { line: self.current_line() }))?;
                         ret.push(num);
                         i += 3;
                     }
@@ -359,11 +360,11 @@ impl Lexer {
                     b'u' => {
                         let num = re_unicode_escaped_seq
                             .find(&s[i + 3..])
-                            .ok_or(Error::IllegalEscape)?
+                            .ok_or(Error::IllegalEscape { line: self.current_line() })?
                             .as_bytes();
-                        let num = str::from_utf8(num).or(Err(Error::IllegalEscape))?;
+                        let num = str::from_utf8(num).or(Err(Error::IllegalEscape { line: self.current_line() }))?;
                         let len = num.len();
-                        let num = num.parse::<u8>().or(Err(Error::IllegalEscape))?;
+                        let num = num.parse::<u8>().or(Err(Error::IllegalEscape { line: self.current_line() }))?;
                         ret.push(num);
                         i += len;
                     }
@@ -383,7 +384,9 @@ impl Lexer {
     fn scan_long_string(&mut self) -> Result<String> {
         // long comment: -- [===[ ... ]===]
         let text = &self.chunk[self.index..];
-        let caps = &re_long_bracket.captures(text).ok_or(Error::IllegalToken)?;
+        let caps = &re_long_bracket.captures(text).ok_or(Error::IllegalToken {
+            line: self.current_line(),
+        })?;
         // todo: trim string
         self.index += caps["comment"].len();
         unsafe { Ok(String::from_utf8_unchecked(caps["string"].to_vec())) }
@@ -395,7 +398,11 @@ impl Lexer {
         let text = &self.chunk[self.index..];
         let s = re_short_str
             .find(text)
-            .ok_or(Error::IllegalToken)?
+            .ok_or(
+                Error::IllegalToken {
+                    line: self.current_line(),
+                }
+            )?
             .as_bytes();
         self.index += s.len();
         let s = &s[1..s.len() - 1];
@@ -405,7 +412,10 @@ impl Lexer {
     /// 扫描数字
     fn scan_number(&mut self) -> Result<String> {
         let text = &self.chunk[self.index..];
-        let s = re_number.find(text).ok_or(Error::IllegalToken)?.as_bytes();
+        let s = re_number.find(text).ok_or(
+            Error::IllegalToken {
+                line: self.current_line(),
+            })?.as_bytes();
         self.index += s.len();
         unsafe { Ok(String::from_utf8_unchecked(s.to_vec())) }
     }
@@ -413,9 +423,24 @@ impl Lexer {
     /// 扫描标识符
     fn scan_identifier(&mut self) -> Result<String> {
         let text = &self.chunk[self.index..];
-        let s = re_ident.find(text).ok_or(Error::IllegalToken)?.as_bytes();
+        let s = re_ident.find(text).ok_or(
+            Error::IllegalToken {
+                line: self.current_line(),
+
+            })?.as_bytes();
         self.index += s.len();
         unsafe { Ok(String::from_utf8_unchecked(s.to_vec())) }
+    }
+
+    fn scan_unknow_identifier(&mut self) -> String {
+        let text = &self.chunk[self.index..];
+        let mut i = 0;
+        while i < text.len() && text[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        let s = &text[..i];
+        self.index += i;
+        unsafe { String::from_utf8_unchecked(s.to_vec()) }
     }
 
     /// 跳过空白符(总是跳过注释)
@@ -578,7 +603,6 @@ mod tests {
         assert_eq!(res.unwrap(), Token::Identifier("name".to_string()));
         assert_eq!(lexer.current_line(), 12);
 
-        assert_eq!(lexer.next_token(), Err(Error::EOF));
-        assert_eq!(lexer.current_line(), 13);
+        assert_eq!(lexer.next_token(), Err(Error::EOF { line: 13 }));
     }
 }

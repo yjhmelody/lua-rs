@@ -3,3 +3,4 @@ extern crate lazy_static;
 extern crate regex;
 
 pub mod compiler;
+mod number;

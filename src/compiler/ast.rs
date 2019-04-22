@@ -78,12 +78,12 @@ pub enum Stat {
         name: String,
         exp: Exp,
     },
-    // function call is either expression or stat
+    /// function call is either expression or statement
     FnCall {
+        /// line of '('
         line: Line,
-        // line of '('
-        last_line: Line,
         // line of ')'
+        last_line: Line,
         prefix_exp: Box<Exp>,
         name_exp: Option<Box<Exp>>,
         args: Vec<Exp>,
@@ -133,7 +133,7 @@ pub enum Exp {
         exp1: Box<Exp>,
         exp2: Box<Exp>,
     },
-    // right-association, parse it to multi-node tree
+    /// right-association, parse it to multi-node tree
     Concat {
         line: Line,
         exps: Vec<Exp>,
@@ -146,8 +146,8 @@ pub enum Exp {
         val_exps: Vec<Exp>,
     },
     TableAccess {
+        /// line of ']'
         last_line: Line,
-        // line of ']'
         prefix_exp: Box<Exp>,
         key_exp: Box<Exp>,
     },
@@ -159,8 +159,10 @@ pub enum Exp {
         block: Box<Block>,
     },
     FnCall {
-        line: Line,      // line of '('
-        last_line: Line, // line of ')'
+        /// line of '('
+        line: Line,
+        /// line of ')'
+        last_line: Line,
         prefix_exp: Box<Exp>,
         name_exp: Option<Box<Exp>>,
         args: Vec<Exp>,
