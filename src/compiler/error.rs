@@ -41,6 +41,17 @@ pub enum Error {
     IllegalFnCall { line: Line },
     /// Illegal Function definition
     IllegalFnDef { line: Line },
+
+    /// No more Registers
+    NoMoreRegisters,
+    /// Illegal Register
+    IllegalRegister,
+    /// No more Scopes
+    NoMoreScopes,
+    /// Not in a loop
+    NoLoop,
+    /// Not a UpValue
+    NotUpValue,
 }
 
 /// Wrapped for parsing time errors
