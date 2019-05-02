@@ -6,6 +6,7 @@
 use core::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::process::id;
 use std::rc::Rc;
 
 use crate::binary::chunk::Prototype;
@@ -82,8 +83,15 @@ impl FnInfo {
         }
     }
 
-    fn index_of_constant(&mut self, k: String) -> usize {
-        unimplemented!()
+    fn constant_index(&mut self, k: &String) -> usize {
+        match self.constants.get(k) {
+            Some(v) => *v,
+            None => {
+                let idx = self.constants.len();
+                self.constants.insert(k.clone(), idx);
+                idx
+            }
+        }
     }
 
     fn alloc_register(&mut self) -> Result<usize> {
@@ -141,15 +149,16 @@ impl FnInfo {
     #[inline]
     fn exit_scope(&mut self) -> Result<()> {
         let jump = self.breaks.pop().ok_or(Error::NoMoreScopes)?;
-
-        // 324
         unimplemented!();
-
         self.scope_level -= 1;
         match self.local_vars.pop() {
             Some(vars) => Ok(()),
             None => Err(Error::NoMoreScopes)
         }
+    }
+
+    fn get_jump_arg_a(&mut self) -> usize {
+        unimplemented!()
     }
 
     /// Add a local variable and return register index
@@ -199,8 +208,8 @@ impl FnInfo {
     /// Get up value's index
     fn up_value_index(&mut self, name: &String) -> Result<usize> {
         match self.up_values.get(name) {
-            Some(upvalue) => {
-                return Ok(upvalue.index);
+            Some(up_value) => {
+                return Ok(up_value.index);
             }
             _ => {}
         }
