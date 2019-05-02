@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 /// "\x1bLua"
@@ -81,7 +82,8 @@ pub struct LocalVar {
     pub end_pc: u32,
 }
 
-#[derive(Debug)]
+/// Constant can be stored in constant pool
+#[derive(Debug, Clone)]
 pub enum Constant {
     Nil,
     Boolean(bool),
@@ -89,3 +91,31 @@ pub enum Constant {
     Integer(i64),
     String(String),
 }
+
+impl Hash for Constant {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Constant::Nil => 0.hash(state),
+            Constant::Boolean(b) => b.hash(state),
+            Constant::Number(n) => n.to_bits().hash(state),
+            Constant::Integer(i) => i.hash(state),
+            Constant::String(s) => s.hash(state),
+        }
+    }
+}
+
+impl PartialEq for Constant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Constant::Nil, Constant::Nil) => true,
+            (Constant::Boolean(a), Constant::Boolean(b)) if a == b => true,
+            (Constant::Number(a), Constant::Number(b)) if a == b => true,
+            (Constant::Integer(a), Constant::Integer(b)) if a == b => true,
+            (Constant::String(s1), Constant::String(s2)) if s1 == s2 => true,
+            // todo: cmp f64 and i64
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Constant {}

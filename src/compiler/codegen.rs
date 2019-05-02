@@ -8,15 +8,17 @@ use std::collections::HashMap;
 use std::process::id;
 use std::rc::Rc;
 
-use crate::binary::chunk::Prototype;
+use crate::binary::chunk::{Constant, Prototype};
 use crate::compiler::ast::{Block, Exp, FnCall, ForIn, ForNum, ParList, Stat};
 use crate::compiler::error::{Error, Result};
 use crate::compiler::lexer::Line;
 use crate::vm::opcode;
 
+/// 262143
 const MAXARG_BX: isize = (1 << 18) - 1;
-// 262143
-const MAXARG_SBX: isize = MAXARG_BX >> 1; // 131071
+/// 131071
+const MAXARG_SBX: isize = MAXARG_BX >> 1;
+
 
 #[derive(Debug)]
 struct LocalVarInfo {
@@ -36,7 +38,7 @@ struct UpValueInfo {
 /// 符号表的设计：作用域链
 #[derive(Debug)]
 struct FnInfo {
-    constants: HashMap<String, usize>,
+    constants: HashMap<Constant, usize>,
     /// num of used regs
     used_regs: usize,
     /// maximum need of num of regs
@@ -84,7 +86,7 @@ impl FnInfo {
         }
     }
 
-    fn constant_index(&mut self, k: &String) -> usize {
+    fn constant_index(&mut self, k: &Constant) -> usize {
         match self.constants.get(k) {
             Some(v) => *v,
             None => {
@@ -241,6 +243,21 @@ impl FnInfo {
         unimplemented!()
     }
 
+    fn close_open_up_values(&mut self, line: Line) {
+        let a = self.get_jump_arg_a();
+        if a > 0 {
+            self.emit_jump(line, a, 0);
+        }
+    }
+
+    fn to_prototype(&self) -> Prototype {
+        let constants = self.constants.iter();
+        unimplemented!()
+    }
+}
+
+
+impl FnInfo {
     #[inline]
     fn emit_ABC(&mut self, line: Line, opcode: u8, a: u32, b: u32, c: u32) {
         let ins = b << 23 | c << 14 | a << 6 | opcode as u32;
@@ -272,6 +289,26 @@ impl FnInfo {
         self.instructions.len() - 1
     }
 
+    /// r[a], r[a+1], ..., r[a+b] = nil
+    fn emit_load_nil(&mut self, line: Line, a: u32, b: u32) {
+        self.emit_ABC(line, opcode::OP_LOADNIL, a, b - 1, 0);
+    }
+
+    /// r[a] = b; if (c) pc++
+    fn emit_load_bool(&mut self, line: Line, a: u32, b: u32, c: u32) {
+        self.emit_ABC(line, opcode::OP_LOADBOOL, a, b, c);
+    }
+
+    fn emit_load_k(&mut self, line: Line, a: u32, k: &Constant) {
+        let idx = self.constant_index(k) as u32;
+        if idx < (1 << 18) {
+            self.emit_ABx(line, opcode::OP_LOADK, a, idx);
+        } else {
+            self.emit_ABx(line, opcode::OP_LOADKX, a, 0);
+            self.emit_Ax(line, opcode::OP_EXTRAARG, idx);
+        }
+    }
+
     #[inline]
     fn pc(&self) -> usize {
         self.instructions.len() - 1
@@ -286,21 +323,9 @@ impl FnInfo {
         self.instructions[pc] = ins;
         unimplemented!()
     }
-
-
-    fn close_open_up_values(&mut self, line: Line) {
-        let a = self.get_jump_arg_a();
-        if a > 0 {
-            self.emit_jump(line, a, 0);
-        }
-    }
 }
 
-fn to_prototype(fn_info: FnInfo) -> Prototype {
-    let constants = fn_info.constants.iter();
-    unimplemented!()
-}
-
+/********************** statement code generation ************************/
 
 impl FnInfo {
     fn codegen_block(&mut self, block: &Block) -> Result<()> {
@@ -309,8 +334,6 @@ impl FnInfo {
         }
         self.codegen_ret_stats(&block.ret_exps)
     }
-
-    /********************** statement code generation ************************/
 
     fn codegen_stat(&mut self, stat: &Stat) -> Result<()> {
         match stat {
@@ -323,8 +346,10 @@ impl FnInfo {
             Stat::ForNum(for_num, line1, line2) => self.codegen_for_num_stat(&*for_num, *line1, *line2),
             Stat::ForIn(for_in, line) => self.codegen_for_in_stat(&*for_in, *line),
             Stat::Assign(names, vals, line) => self.codegen_assign_stat(names, vals, *line),
+            Stat::LocalVarDecl(names, exps, line) => self.codegen_local_var_decl_stat(names, exps, *line),
+            Stat::LocalFnDef(name, exp) => self.codegen_local_fn_def_stat(name, exp),
 
-            _ => { Ok(()) }
+            _ => { panic!("label and goto statements are not supported!"); }
         }
     }
 
@@ -332,8 +357,8 @@ impl FnInfo {
         unimplemented!()
     }
 
-    fn codegen_local_fn_def_stat(&mut self, name: String, exp: &Exp) -> Result<()> {
-        let reg = self.add_local_var(name)?;
+    fn codegen_local_fn_def_stat(&mut self, name: &String, exp: &Exp) -> Result<()> {
+        let reg = self.add_local_var(name.clone())?;
         self.codegen_fn_def_exp(exp)?;
         Ok(())
     }
@@ -360,7 +385,6 @@ impl FnInfo {
         unimplemented!()
     }
 
-
     fn codegen_while_stat(&mut self, exp: &Exp, block: &Block) -> Result<()> {
         let pc_before_exp = self.pc();
         let reg = self.alloc_register();
@@ -383,7 +407,17 @@ impl FnInfo {
         unimplemented!()
     }
 
-    /********************** expression code generation ***********************/
+    fn codegen_local_var_decl_stat(&mut self, names: &Vec<String>, exps: &Vec<Exp>, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+}
+
+/********************** expression code generation ***********************/
+
+impl FnInfo {
+    fn codegen_exp(&mut self, exp: &Exp, a: u32, n: usize) -> Result<()> {
+        unimplemented!()
+    }
 
     fn codegen_fn_def_exp(&mut self, stat: &Exp) -> Result<()> {
         unimplemented!()
@@ -393,7 +427,6 @@ impl FnInfo {
         unimplemented!()
     }
 }
-
 
 #[inline]
 fn is_var_arg_or_fn_call(exp: &Exp) -> bool {
