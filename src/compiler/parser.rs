@@ -4,7 +4,7 @@ use crate::compiler::ast::*;
 use crate::compiler::error::*;
 use crate::compiler::lexer::*;
 use crate::compiler::token::Token;
-use crate::number::parser::parse_number;
+use crate::number::parser::{parse_float, parse_integer};
 
 /// parse gets a lexer and returns a Lua Block which is Lua AST
 pub fn parse(lexer: &mut Lexer) -> Block {
@@ -629,8 +629,13 @@ fn parse_number_exp(lexer: &mut Lexer) -> Result<Exp> {
     let num = lexer.next_token();
     let line = lexer.current_line();
     if let Ok(Token::Number(val)) = num {
-        let val = parse_number(val)?;
-        Ok(Exp::Integer(val, line))
+        match parse_integer(val.clone()) {
+            Err(_) => {
+                let num = parse_float(val)?;
+                Ok(Exp::Float(num, line))
+            }
+            Ok(num) => Ok(Exp::Integer(num, line))
+        }
     } else {
         Err(Error::IllegalNumLiteral { line: lexer.current_line() })
     }

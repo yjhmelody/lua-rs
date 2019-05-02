@@ -63,6 +63,7 @@ struct FnInfo {
     is_vararg: bool,
 }
 
+/********************** keep function information ************************/
 
 impl FnInfo {
     /// Create a FnInfo structure
@@ -256,6 +257,7 @@ impl FnInfo {
     }
 }
 
+/********************** emit bytecode ************************/
 
 impl FnInfo {
     #[inline]
@@ -299,8 +301,9 @@ impl FnInfo {
         self.emit_ABC(line, opcode::OP_LOADBOOL, a, b, c);
     }
 
-    fn emit_load_k(&mut self, line: Line, a: u32, k: &Constant) {
-        let idx = self.constant_index(k) as u32;
+    /// r[a] = kst[bx]
+    fn emit_load_k(&mut self, line: Line, a: u32, k: Constant) {
+        let idx = self.constant_index(&k) as u32;
         if idx < (1 << 18) {
             self.emit_ABx(line, opcode::OP_LOADK, a, idx);
         } else {
@@ -359,7 +362,7 @@ impl FnInfo {
 
     fn codegen_local_fn_def_stat(&mut self, name: &String, exp: &Exp) -> Result<()> {
         let reg = self.add_local_var(name.clone())?;
-        self.codegen_fn_def_exp(exp)?;
+        unimplemented!();
         Ok(())
     }
 
@@ -415,15 +418,31 @@ impl FnInfo {
 /********************** expression code generation ***********************/
 
 impl FnInfo {
-    fn codegen_exp(&mut self, exp: &Exp, a: u32, n: usize) -> Result<()> {
-        unimplemented!()
+    fn codegen_exp(&mut self, exp: &Exp, a: u32, n: u32) {
+        match exp {
+            Exp::Nil(line) => self.emit_load_nil(*line, a, n),
+            Exp::False(line) => self.emit_load_bool(*line, a, 0, 0),
+            Exp::True(line) => self.emit_load_bool(*line, a, 1, 0),
+            Exp::Integer(num, line) => self.emit_load_k(*line, a, Constant::Integer(*num)),
+            Exp::Float(num, line) => self.emit_load_k(*line, a, Constant::Number(*num)),
+            Exp::String(s, line) => self.emit_load_k(*line, a, Constant::String(s.clone())),
+            Exp::Parens(exp) => self.codegen_exp(&*exp, a, n),
+            Exp::Vararg(line) => { self.codegen_vararg_exp(*line); }
+            Exp::FnDef(par_list, block, line1, line2) => { self.codegen_fn_def_exp(par_list, &*block, *line1, *line2); }
+
+            _ => {}
+        }
     }
 
-    fn codegen_fn_def_exp(&mut self, stat: &Exp) -> Result<()> {
+    fn codegen_fn_def_exp(&mut self, par_list: &ParList, block: &Block, line1: Line, line2: Line) -> Result<()> {
         unimplemented!()
     }
 
     fn codegen_fn_call_exp(&mut self, fn_call: &FnCall, reg: usize, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_vararg_exp(&mut self, line: Line) -> Result<()> {
         unimplemented!()
     }
 }

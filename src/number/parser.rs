@@ -10,7 +10,7 @@ lazy_static! {
 }
 
 
-pub fn parse_number(num: String) -> Result<i64> {
+pub fn parse_float(num: String) -> Result<f64> {
     // todo: supports total syntax
     // trim space
     // to lower
@@ -23,8 +23,13 @@ pub fn parse_number(num: String) -> Result<i64> {
 
     //decimal
 
-    num.parse::<i64>().or(Err(Error::IllegalToken {
+    num.parse::<f64>().or(Err(Error::IllegalToken {
         line: 0,
     }))
 }
 
+pub fn parse_integer(num: String) -> Result<i64> {
+    num.parse::<i64>().or(Err(Error::IllegalToken {
+        line: 0,
+    }))
+}

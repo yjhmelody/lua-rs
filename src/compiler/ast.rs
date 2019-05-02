@@ -56,6 +56,7 @@ pub enum Exp {
     False(Line),
     Vararg(Line),
     Integer(i64, Line),
+    Float(f64, Line),
     String(String, Line),
     Name(String, Line),
     Parens(Box<Exp>),
