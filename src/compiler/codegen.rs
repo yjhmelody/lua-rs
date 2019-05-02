@@ -1,12 +1,14 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 #![allow(unused_mut)]
+#![allow(non_snake_case)]
 
 use core::borrow::BorrowMut;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::compiler::ast::{Block, Exp, Stat};
+use crate::compiler::ast::{Block, Exp, ParList, Stat};
 use crate::compiler::error::{Error, Result};
 
 const MAXARG_BX: isize = (1 << 18) - 1;
@@ -43,7 +45,7 @@ struct FnInfo {
     /// Record some breaks statements
     breaks: Vec<Option<Vec<usize>>>,
     /// Parents' index
-    parent: Option<Rc<FnInfo>>,
+    parent: Option<Rc<RefCell<FnInfo>>>,
     /// UpValues
     up_values: HashMap<String, UpValueInfo>,
     /// Store Lua instructions
@@ -53,21 +55,16 @@ struct FnInfo {
     /// The function's param num
     num_params: usize,
     /// has `...`
-    is_var_arg: bool,
+    is_vararg: bool,
 }
 
 
 impl FnInfo {
     /// Create a FnInfo structure
     #[inline]
-    fn new(parent: Option<Rc<FnInfo>>, fn_def: Exp) -> Self {
-        let (num_params, is_var_arg) = match fn_def {
-            Exp::FnDef(par_list, _, _, _) => {
-                (par_list.params.len(), par_list.is_vararg)
-            }
-            _ => unreachable!()
-        };
-
+    fn new(parent: Option<Rc<RefCell<FnInfo>>>, par_list: ParList, block: Box<Block>) -> Self {
+        let is_vararg = par_list.is_vararg;
+        let num_params = par_list.params.len();
         Self {
             constants: HashMap::new(),
             used_regs: 0,
@@ -80,8 +77,12 @@ impl FnInfo {
             instructions: Vec::new(),
             sub_fns: Vec::new(),
             num_params,
-            is_var_arg,
+            is_vararg,
         }
+    }
+
+    fn to_proto(&mut self) -> Self {
+        unimplemented!()
     }
 
     fn index_of_constant(&mut self, k: String) -> usize {
@@ -262,9 +263,7 @@ fn codegen_block(fn_info: &mut FnInfo, node: &Block) {
     codegen_ret_stats(fn_info, &node.ret_exps);
 }
 
-fn codegen_ret_stats(fn_info: &mut FnInfo, exps: &Vec<Exp>) {
-    unimplemented!()
-}
+/****************** statement code generation *********************/
 
 fn codegen_stat(fn_info: &mut FnInfo, stat: &Stat) {
     match stat {
@@ -273,7 +272,10 @@ fn codegen_stat(fn_info: &mut FnInfo, stat: &Stat) {
     }
 }
 
-/****************** statement code generation *********************/
+fn codegen_ret_stats(fn_info: &mut FnInfo, exps: &Vec<Exp>) {
+    unimplemented!()
+}
+
 
 fn codegen_local_fn_def_stat(fn_info: &mut FnInfo, name: String, exp: &Exp) -> Result<()> {
     let reg = fn_info.borrow_mut().add_local_var(name)?;
@@ -281,6 +283,8 @@ fn codegen_local_fn_def_stat(fn_info: &mut FnInfo, name: String, exp: &Exp) -> R
     Ok(())
 }
 
+
+fn codegen_fn_call_stat(fn_info: &mut FnInfo) {}
 
 /****************** expression code generation *********************/
 
