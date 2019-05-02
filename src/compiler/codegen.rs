@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::binary::chunk::Prototype;
 use crate::compiler::ast::{Block, Exp, ParList, Stat};
 use crate::compiler::error::{Error, Result};
 
@@ -81,10 +82,6 @@ impl FnInfo {
         }
     }
 
-    fn to_proto(&mut self) -> Self {
-        unimplemented!()
-    }
-
     fn index_of_constant(&mut self, k: String) -> usize {
         unimplemented!()
     }
@@ -105,7 +102,6 @@ impl FnInfo {
         }
         Ok(self.used_regs - n)
     }
-
 
     #[inline]
     fn free_register(&mut self) {
@@ -213,13 +209,11 @@ impl FnInfo {
         unimplemented!()
     }
 
-
     #[inline]
     fn emit_ABC(&mut self, opcode: u32, a: u32, b: u32, c: u32) {
         let ins = b << 23 | c << 14 | a << 6 | opcode;
         self.instructions.push(ins);
     }
-
 
     #[inline]
     fn emit_ABx(&mut self, opcode: u32, a: u32, bx: u32) {
@@ -255,6 +249,11 @@ impl FnInfo {
     }
 }
 
+fn to_prototype(fn_info: FnInfo) -> Prototype {
+    let constants = fn_info.constants.iter();
+    unimplemented!()
+}
+
 fn codegen_block(fn_info: &mut FnInfo, node: &Block) {
     for stat in &node.stats {
         codegen_stat(fn_info, stat);
@@ -263,7 +262,7 @@ fn codegen_block(fn_info: &mut FnInfo, node: &Block) {
     codegen_ret_stats(fn_info, &node.ret_exps);
 }
 
-/****************** statement code generation *********************/
+/********************** statement code generation ************************/
 
 fn codegen_stat(fn_info: &mut FnInfo, stat: &Stat) {
     match stat {
@@ -276,17 +275,15 @@ fn codegen_ret_stats(fn_info: &mut FnInfo, exps: &Vec<Exp>) {
     unimplemented!()
 }
 
-
 fn codegen_local_fn_def_stat(fn_info: &mut FnInfo, name: String, exp: &Exp) -> Result<()> {
     let reg = fn_info.borrow_mut().add_local_var(name)?;
     codegen_fn_def_exp(fn_info, exp)?;
     Ok(())
 }
 
-
 fn codegen_fn_call_stat(fn_info: &mut FnInfo) {}
 
-/****************** expression code generation *********************/
+/********************** expression code generation ***********************/
 
 fn codegen_fn_def_exp(fn_info: &mut FnInfo, stat: &Exp) -> Result<()> {
     unimplemented!()
@@ -298,7 +295,6 @@ fn is_var_arg_or_fn_call(exp: &Exp) -> bool {
     match exp {
         Exp::Vararg(_) => true,
         Exp::FnCall(_, _, _) => true,
-
         _ => false,
     }
 }

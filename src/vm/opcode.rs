@@ -1,16 +1,14 @@
-use crate::compiler::token::Token::OpMod;
+//! instruction = 32bit(fixed length)
+//!
+//! |0-5(6bits)|6-13(8bit)|14-22(9bit)|23-31(9bit)|
+//! |----------|-----------|-----------|-----------|
+//! |  opcode  |    A     |     C     |    B      |
+//! |----------|----------|-----------|-----------|
+//! |  opcode  |    A     |      Bx(unsigned)     |
+//! |----------|----------|-----------|-----------|
+//! |  opcode  |    A     |      sBx(signed)      |
+//!
 
-/// instruction = 32bit(fixed length)
-///
-/// +---------------------------------------------+
-/// |0-5(6bits)|6-13(8bit)|14-22(9bit)|23-31(9bit)|
-/// |==========+==========+===========+===========|
-/// |  opcode  |    A     |     C     |    B      |
-/// |----------+----------+-----------+-----------|
-/// |  opcode  |    A     |      Bx(unsigned)     |
-/// |----------+----------+-----------+-----------|
-/// |  opcode  |    A     |      sBx(signed)      |
-/// +---------------------------------------------+
 pub const OP_MOVE: u8 = 0x00;
 pub const OP_LOADK: u8 = 0x01;
 pub const OP_LOADKX: u8 = 0x02;
@@ -65,13 +63,12 @@ pub enum OpMode {
     /// iABC
     ABC = 0,
     /// iABx
-    ABX = 1,
+    ABx = 1,
     /// iAsBx
-    ASBX = 2,
+    AsBx = 2,
     /// iAx
-    AX = 3,
+    Ax = 3,
 }
-
 
 /// OpArgMask
 #[derive(Debug, Copy, Clone)]
@@ -86,11 +83,11 @@ pub enum OpArgMask {
     K = 3,
 }
 
-/*       B       C     mode    name    */
+///  B, C, mode, name
 pub const OPCODES: &'static [OpCode] = &[
     opcode(OpArgMask::R, OpArgMask::N, OpMode::ABC, "MOVE    "), // R(A) := R(B)
-    opcode(OpArgMask::K, OpArgMask::N, OpMode::ABX, "LOADK   "), // R(A) := Kst(Bx)
-    opcode(OpArgMask::N, OpArgMask::N, OpMode::ABX, "LOADKX  "), // R(A) := Kst(extra arg)
+    opcode(OpArgMask::K, OpArgMask::N, OpMode::ABx, "LOADK   "), // R(A) := Kst(Bx)
+    opcode(OpArgMask::N, OpArgMask::N, OpMode::ABx, "LOADKX  "), // R(A) := Kst(extra arg)
     opcode(OpArgMask::U, OpArgMask::U, OpMode::ABC, "LOADBOOL"), // R(A) := (bool)B; if (C) pc++
     opcode(OpArgMask::U, OpArgMask::N, OpMode::ABC, "LOADNIL "), // R(A), R(A+1), ..., R(A+B) := nil
     opcode(OpArgMask::U, OpArgMask::N, OpMode::ABC, "GETUPVAL"), // R(A) := UpValue[B]
@@ -118,7 +115,7 @@ pub const OPCODES: &'static [OpCode] = &[
     opcode(OpArgMask::R, OpArgMask::N, OpMode::ABC, "NOT     "), // R(A) := not R(B)
     opcode(OpArgMask::R, OpArgMask::N, OpMode::ABC, "LEN     "), // R(A) := length of R(B)
     opcode(OpArgMask::R, OpArgMask::R, OpMode::ABC, "CONCAT  "), // R(A) := R(B).. ... ..R(C)
-    opcode(OpArgMask::R, OpArgMask::N, OpMode::ASBX, "JMP     "), // pc+=sBx; if (A) close all upvalues >= R(A - 1)
+    opcode(OpArgMask::R, OpArgMask::N, OpMode::AsBx, "JMP     "), // pc+=sBx; if (A) close all upvalues >= R(A - 1)
     opcode(OpArgMask::K, OpArgMask::K, OpMode::ABC, "EQ      "), // if ((RK(B) == RK(C)) ~= A) then pc++
     opcode(OpArgMask::K, OpArgMask::K, OpMode::ABC, "LT      "), // if ((RK(B) <  RK(C)) ~= A) then pc++
     opcode(OpArgMask::K, OpArgMask::K, OpMode::ABC, "LE      "), // if ((RK(B) <= RK(C)) ~= A) then pc++
@@ -127,14 +124,14 @@ pub const OPCODES: &'static [OpCode] = &[
     opcode(OpArgMask::U, OpArgMask::U, OpMode::ABC, "CALL    "), // R(A), ... ,R(A+C-2) := R(A)(R(A+1), ... ,R(A+B-1))
     opcode(OpArgMask::U, OpArgMask::U, OpMode::ABC, "TAILCALL"), // return R(A)(R(A+1), ... ,R(A+B-1))
     opcode(OpArgMask::U, OpArgMask::N, OpMode::ABC, "RETURN  "), // return R(A), ... ,R(A+B-2)
-    opcode(OpArgMask::R, OpArgMask::N, OpMode::ASBX, "FORLOOP "), // R(A)+=R(A+2); if R(A) <?= R(A+1) then { pc+=sBx; R(A+3)=R(A) }
-    opcode(OpArgMask::R, OpArgMask::N, OpMode::ASBX, "FORPREP "), // R(A)-=R(A+2); pc+=sBx
+    opcode(OpArgMask::R, OpArgMask::N, OpMode::AsBx, "FORLOOP "), // R(A)+=R(A+2); if R(A) <?= R(A+1) then { pc+=sBx; R(A+3)=R(A) }
+    opcode(OpArgMask::R, OpArgMask::N, OpMode::AsBx, "FORPREP "), // R(A)-=R(A+2); pc+=sBx
     opcode(OpArgMask::N, OpArgMask::U, OpMode::ABC, "TFORCALL"),  // R(A+3), ... ,R(A+2+C) := R(A)(R(A+1), R(A+2));
-    opcode(OpArgMask::R, OpArgMask::N, OpMode::ASBX, "TFORLOOP"), // if R(A+1) ~= nil then { R(A)=R(A+1); pc += sBx }
+    opcode(OpArgMask::R, OpArgMask::N, OpMode::AsBx, "TFORLOOP"), // if R(A+1) ~= nil then { R(A)=R(A+1); pc += sBx }
     opcode(OpArgMask::U, OpArgMask::U, OpMode::ABC, "SETLIST "),  // R(A)[(C-1)*FPF+i] := R(A+i), 1 <= i <= B
-    opcode(OpArgMask::U, OpArgMask::N, OpMode::ABX, "CLOSURE "),  // R(A) := closure(KPROTO[Bx])
+    opcode(OpArgMask::U, OpArgMask::N, OpMode::ABx, "CLOSURE "),  // R(A) := closure(KPROTO[Bx])
     opcode(OpArgMask::U, OpArgMask::N, OpMode::ABC, "VARARG  "),  // R(A), R(A+1), ..., R(A+B-2) = vararg
-    opcode(OpArgMask::U, OpArgMask::U, OpMode::AX, "EXTRAARG"),   // extra (larger) argument for previous opcode
+    opcode(OpArgMask::U, OpArgMask::U, OpMode::Ax, "EXTRAARG"),   // extra (larger) argument for previous opcode
 ];
 
 const fn opcode(bmode: OpArgMask, cmode: OpArgMask, opmode: OpMode, name: &'static str) -> OpCode {

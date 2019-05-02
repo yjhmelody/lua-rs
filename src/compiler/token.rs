@@ -119,7 +119,6 @@ pub enum Token {
     Identifier(String),
     /// __number__
     Number(String),
-    //todo: impl string to number
     /// __string__
     String(String),
 }

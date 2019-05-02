@@ -51,7 +51,7 @@ struct Header {
 #[derive(Debug)]
 pub struct Prototype {
     pub source: Option<String>,
-    // debug
+    /// For debug
     pub line_defined: u32,
     pub last_line_defined: u32,
     pub num_params: u8,
@@ -62,9 +62,9 @@ pub struct Prototype {
     pub up_values: Vec<UpValue>,
     pub prototypes: Vec<Rc<Prototype>>,
     pub line_info: Vec<u32>,
-    // debug
+    /// For debug
     pub local_vars: Vec<LocalVar>,
-    // debug
+    /// For debug
     pub up_value_names: Vec<String>, // debug
 }
 

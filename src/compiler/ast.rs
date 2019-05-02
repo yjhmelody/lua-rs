@@ -41,7 +41,6 @@ pub enum Stat {
     ForIn(Box<ForIn>, Line),
     /* last_line */
     LocalVarDecl(Vec<String>, Vec<Exp>, Line),
-
     LocalFnDef(String, Exp),
     /* last line */
     Assign(Vec<Exp>, Vec<Exp>, Line),
