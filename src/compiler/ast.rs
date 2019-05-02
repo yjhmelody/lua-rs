@@ -6,9 +6,9 @@ use crate::compiler::token::Token;
 /// A Lua chunk also is a Lua block
 #[derive(Debug)]
 pub struct Block {
-    stats: Vec<Stat>,
-    ret_exps: Vec<Exp>,
-    last_line: Line,
+    pub stats: Vec<Stat>,
+    pub ret_exps: Vec<Exp>,
+    pub last_line: Line,
 }
 
 impl Block {
@@ -27,145 +27,141 @@ impl Block {
 #[derive(Debug)]
 pub enum Stat {
     Empty,
-    Break {
-        line: Line,
-    },
-    Label {
-        name: String,
-    },
-    Goto {
-        name: String,
-    },
-    Do {
-        block: Box<Block>,
-    },
-    While {
-        exp: Exp,
-        block: Box<Block>,
-    },
-    Repeat {
-        exp: Exp,
-        block: Box<Block>,
-    },
+    Break(Line),
+    Label(String),
+    Goto(String),
+    Do(Box<Block>),
+    While(Exp, Box<Block>),
+    Repeat(Exp, Box<Block>),
     /// exps stores conditions. compile `else` to `elseif true`
-    If {
-        exps: Vec<Exp>,
-        blocks: Vec<Block>,
-    },
-    ForNum {
-        line_of_for: Line,
-        line_of_do: Line,
-        var_name: String,
-        exps: (Exp, Exp, Exp),
-        block: Box<Block>,
-    },
-    ForIn {
-        line_of_do: Line,
-        name_list: Vec<String>,
-        exp_list: Vec<Exp>,
-        block: Box<Block>,
-    },
-    LocalVarDecl {
-        last_line: Line,
-        name_list: Vec<String>,
-        exp_list: Vec<Exp>,
-    },
-    Assign {
-        last_line: Line,
-        var_list: Vec<Exp>,
-        exp_list: Vec<Exp>,
-    },
-    LocalFnDef {
-        name: String,
-        exp: Exp,
-    },
+    Condition(Vec<Exp>, Vec<Block>),
+    /* line of for, line of do */
+    ForNum(Box<ForNum>, Line, Line),
+    /* line of do */
+    ForIn(Box<ForIn>, Line),
+    /* last_line */
+    LocalVarDecl(Vec<String>, Vec<Exp>, Line),
+
+    LocalFnDef(String, Exp),
+    /* last line */
+    Assign(Vec<Exp>, Vec<Exp>, Line),
     /// function call is either expression or statement
-    FnCall {
-        /// line of '('
-        line: Line,
-        // line of ')'
-        last_line: Line,
-        prefix_exp: Box<Exp>,
-        name_exp: Option<Box<Exp>>,
-        args: Vec<Exp>,
+    FnCall(FnCall, Line, Line),
+}
+
+/// Lua expression
+#[derive(Debug)]
+pub enum Exp {
+    Nil(Line),
+    True(Line),
+    False(Line),
+    Vararg(Line),
+    Integer(i64, Line),
+    String(String, Line),
+    Name(String, Line),
+    Parens(Box<Exp>),
+    Unop(Token, Box<Exp>, Line),
+    Binop(Box<Exp>, Token, Box<Exp>, Line),
+    /// right-association, parse it to multi-node tree
+    Concat(Vec<Exp>, Line),
+    // last line
+    TableConstructor(Vec<Field>, Line),
+    /// (Object, Key)
+    TableAccess(Box<Exp>, Box<Exp>, Line),
+    FnDef(ParList, Box<Block>, Line, Line),
+    FnCall(FnCall, Line, Line),
+}
+
+
+#[derive(Debug)]
+pub struct ForNum {
+    pub name: String,
+    pub init: Exp,
+    pub limit: Exp,
+    pub step: Exp,
+    pub block: Box<Block>,
+}
+
+impl ForNum {
+    pub fn new(name: String, init: Exp, limit: Exp, step: Exp, block: Box<Block>) -> Box<Self> {
+        Box::new(Self {
+            name,
+            init,
+            limit,
+            step,
+            block,
+        })
     }
 }
 
-/// Lua Expression
 #[derive(Debug)]
-pub enum Exp {
-    Nil {
-        line: Line,
-    },
-    True {
-        line: Line,
-    },
-    False {
-        line: Line,
-    },
-    Vararg {
-        line: Line,
-    },
-    Integer {
-        line: Line,
-        val: i64,
-    },
-    Float {
-        line: Line,
-        val: f64,
-    },
-    String {
-        line: Line,
-        val: String,
-    },
-    Name {
-        line: Line,
-        val: String,
-    },
-    Parens(Box<Exp>),
-    Unop {
-        line: Line,
-        op: Token,
-        exp: Box<Exp>,
-    },
-    Binop {
-        line: Line,
-        op: Token,
-        exp1: Box<Exp>,
-        exp2: Box<Exp>,
-    },
-    /// right-association, parse it to multi-node tree
-    Concat {
-        line: Line,
-        exps: Vec<Exp>,
-    },
-    TableConstructor {
-        line: Line,
-        last_line: Line,
-        /// key can be omitted
-        key_exps: Vec<Option<Exp>>,
-        val_exps: Vec<Exp>,
-    },
-    TableAccess {
-        /// line of ']'
-        last_line: Line,
-        prefix_exp: Box<Exp>,
-        key_exp: Box<Exp>,
-    },
-    FnDef {
-        line: Line,
-        last_line: Line,
-        par_list: Vec<String>,
-        is_vararg: bool,
-        block: Box<Block>,
-    },
-    FnCall {
-        /// line of '('
-        line: Line,
-        /// line of ')'
-        last_line: Line,
-        prefix_exp: Box<Exp>,
-        name_exp: Option<Box<Exp>>,
-        args: Vec<Exp>,
-    },
+pub struct ForIn {
+    pub name_list: Vec<String>,
+    pub exp_list: Vec<Exp>,
+    pub block: Box<Block>,
+}
+
+impl ForIn {
+    pub fn new(name_list: Vec<String>, exp_list: Vec<Exp>, block: Box<Block>) -> Box<Self> {
+        Box::new(Self {
+            name_list,
+            exp_list,
+            block,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct Field {
+    pub key: Option<Exp>,
+    pub val: Exp,
+}
+
+impl Field {
+    pub fn new(key: Option<Exp>, val: Exp) -> Self { Self { key, val } }
+}
+
+#[derive(Debug)]
+pub struct FnCall {
+    pub prefix: Box<Exp>,
+    pub name: Option<Box<Exp>>,
+    pub args: Vec<Exp>,
+}
+
+impl FnCall {
+    pub fn new(prefix: Box<Exp>, name: Option<Box<Exp>>, args: Vec<Exp>) -> Self {
+        Self {
+            prefix,
+            name,
+            args,
+        }
+    }
+}
+
+
+#[derive(Debug)]
+pub struct ParList {
+    pub params: Vec<String>,
+    pub is_vararg: bool,
+}
+
+impl ParList {
+    pub fn new(params: Vec<String>, is_vararg: bool) -> Self {
+        Self {
+            is_vararg,
+            params,
+        }
+    }
+
+    pub fn set_vararg(&mut self, vararg: bool) {
+        self.is_vararg = vararg;
+    }
+
+    pub fn set_params(&mut self, params: Vec<String>) {
+        self.params = params;
+    }
+
+    pub fn push_param(&mut self, param: String) {
+        self.params.push(param)
+    }
 }

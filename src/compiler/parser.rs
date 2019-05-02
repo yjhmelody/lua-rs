@@ -96,9 +96,7 @@ fn parse_empty_stat(lexer: &mut Lexer) -> Result<Stat> {
 
 fn parse_break_stat(lexer: &mut Lexer) -> Result<Stat> {
     lexer.skip_next_token();
-    Ok(Stat::Break {
-        line: lexer.current_line(),
-    })
+    Ok(Stat::Break(lexer.current_line()))
 }
 
 fn parse_label_stat(lexer: &mut Lexer) -> Result<Stat> {
@@ -110,7 +108,7 @@ fn parse_label_stat(lexer: &mut Lexer) -> Result<Stat> {
     if tok != Token::SepLabel {
         Err(Error::IllegalStat { line: lexer.current_line() })
     } else {
-        Ok(Stat::Label { name })
+        Ok(Stat::Label(name))
     }
 }
 
@@ -118,7 +116,7 @@ fn parse_goto_stat(lexer: &mut Lexer) -> Result<Stat> {
     // skip `goto`
     lexer.skip_next_token();
     let name = lexer.next_ident()?;
-    Ok(Stat::Goto { name })
+    Ok(Stat::Goto(name))
 }
 
 fn parse_do_stat(lexer: &mut Lexer) -> Result<Stat> {
@@ -126,7 +124,7 @@ fn parse_do_stat(lexer: &mut Lexer) -> Result<Stat> {
     lexer.skip_next_token();
     let block = Box::new(parse_block(lexer)?);
     match lexer.next_token() {
-        Ok(Token::KwEnd) => Ok(Stat::Do { block: block }),
+        Ok(Token::KwEnd) => Ok(Stat::Do(block)),
         _ => Err(Error::IllegalStat { line: lexer.current_line() }),
     }
 }
@@ -141,7 +139,7 @@ fn parse_while_stat(lexer: &mut Lexer) -> Result<Stat> {
             if end != Token::KwEnd {
                 Err(Error::IllegalStat { line: lexer.current_line() })
             } else {
-                Ok(Stat::While { exp, block })
+                Ok(Stat::While(exp, block))
             }
         }
         _ => Err(Error::IllegalStat { line: lexer.current_line() }),
@@ -155,7 +153,7 @@ fn parse_repeat_stat(lexer: &mut Lexer) -> Result<Stat> {
     match lexer.next_token() {
         Ok(Token::KwUntil) => {
             let exp = parse_exp(lexer)?;
-            Ok(Stat::Repeat { exp, block })
+            Ok(Stat::Repeat(exp, block))
         }
         _ => Err(Error::IllegalStat { line: lexer.current_line() }),
     }
@@ -195,12 +193,12 @@ fn parse_if_stat(lexer: &mut Lexer) -> Result<Stat> {
     // else -> elseif true
     if let Ok(Token::KwElse) = lexer.look_ahead() {
         lexer.skip_next_token();
-        exps.push(Exp::True { line: lexer.current_line() });
+        exps.push(Exp::True(lexer.current_line()));
         // demo: if false then elseif false then else end
         blocks.push(parse_block(lexer)?);
     }
 
-    Ok(Stat::If { exps, blocks })
+    Ok(Stat::Condition(exps, blocks))
 }
 
 fn parse_for_stat(lexer: &mut Lexer) -> Result<Stat> {
@@ -235,10 +233,7 @@ fn _parse_for_num_stat(lexer: &mut Lexer, line_of_for: Line, var_name: String) -
             lexer.skip_next_token();
             parse_exp(lexer)?
         }
-        _ => Exp::Integer {
-            line: lexer.current_line(),
-            val: 1,
-        },
+        _ => Exp::Integer(1, lexer.current_line()),
     };
 
     let line_of_do = match lexer.next_token() {
@@ -256,13 +251,7 @@ fn _parse_for_num_stat(lexer: &mut Lexer, line_of_for: Line, var_name: String) -
         }
     };
 
-    Ok(Stat::ForNum {
-        line_of_for,
-        line_of_do,
-        var_name,
-        exps: (init_exp, limit_exp, step_exp),
-        block,
-    })
+    Ok(Stat::ForNum(ForNum::new(var_name, init_exp, limit_exp, step_exp, block), line_of_for, line_of_do))
 }
 
 fn parse_local_assign_or_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
@@ -278,7 +267,7 @@ fn _parse_local_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
     lexer.skip_next_token();
     let name = lexer.next_ident()?;
     let exp = parse_fn_def_exp(lexer)?;
-    Ok(Stat::LocalFnDef { name, exp })
+    Ok(Stat::LocalFnDef(name, exp))
 }
 
 fn _parse_local_var_decl_stat(lexer: &mut Lexer) -> Result<Stat> {
@@ -291,30 +280,18 @@ fn _parse_local_var_decl_stat(lexer: &mut Lexer) -> Result<Stat> {
         vec![]
     };
     let last_line = lexer.current_line();
-    Ok(Stat::LocalVarDecl {
-        last_line,
+    Ok(Stat::LocalVarDecl(
         name_list,
         exp_list,
-    })
+        last_line,
+    ))
 }
 
 fn parse_assign_or_fn_call_stat(lexer: &mut Lexer) -> Result<Stat> {
     let prefix_exp = parse_prefix_exp(lexer);
     match prefix_exp {
-        Ok(Exp::FnCall {
-               line,
-               last_line,
-               prefix_exp,
-               name_exp,
-               args,
-           }) => {
-            Ok(Stat::FnCall {
-                line,
-                last_line,
-                prefix_exp,
-                name_exp,
-                args,
-            })
+        Ok(Exp::FnCall(fn_call, line, last_line)) => {
+            Ok(Stat::FnCall(fn_call, line, last_line))
         }
         _ => {
             parse_assign_stat(lexer, prefix_exp.unwrap())
@@ -329,11 +306,7 @@ fn parse_assign_stat(lexer: &mut Lexer, var0: Exp) -> Result<Stat> {
         Ok(Token::OpAssign) => {
             let exp_list = parse_exp_list(lexer)?;
             let last_line = lexer.current_line();
-            Ok(Stat::Assign {
-                last_line,
-                var_list,
-                exp_list,
-            })
+            Ok(Stat::Assign(var_list, exp_list, last_line))
         }
         _ => { Err(Error::MissingAssignment { line: lexer.current_line() }) }
     }
@@ -348,24 +321,14 @@ fn parse_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
     // v:name(args) => v.name(self, args)
     // insert `self` to the first arg
     // todo: refactor
-    if let Exp::FnDef {
-        line: _,
-        last_line,
-        ref mut par_list,
-        is_vararg: _,
-        block: _,
-    } = fn_body {
+    if let Exp::FnDef(ref mut par_list, _, _, last_line) = fn_body {
         if has_colon {
-            par_list.reverse();
-            par_list.push("self".to_string());
-            par_list.reverse();
+            par_list.params.reverse();
+            par_list.params.push("self".to_string());
+            par_list.params.reverse();
         }
         // transfer function definition to assignment
-        return Ok(Stat::Assign {
-            last_line,
-            var_list: vec![fn_name],
-            exp_list: vec![fn_body],
-        });
+        return Ok(Stat::Assign(vec![fn_name], vec![fn_body], last_line));
     }
     unreachable!()
 }
@@ -398,12 +361,7 @@ fn _parse_for_in_stat(lexer: &mut Lexer, name: String) -> Result<Stat> {
             };
             let block = Box::new(parse_block(lexer)?);
             match lexer.next_token() {
-                Ok(Token::KwEnd) => Ok(Stat::ForIn {
-                    line_of_do,
-                    name_list,
-                    exp_list,
-                    block,
-                }),
+                Ok(Token::KwEnd) => Ok(Stat::ForIn(ForIn::new(name_list, exp_list, block), line_of_do)),
                 _ => Err(Error::IllegalStat { line: lexer.current_line() }),
             }
         }
@@ -426,18 +384,14 @@ fn _parse_fn_name(lexer: &mut Lexer, has_colon: &mut bool) -> Result<Exp> {
     // fn_name ::= Name {`.` Name} [`:` Name]
     let name = lexer.next_ident()?;
     let line = lexer.current_line();
-    let mut exp = Box::new(Exp::Name { line, val: name });
+    let mut exp = Box::new(Exp::Name(name, line));
 
     while let Ok(Token::SepDot) = lexer.look_ahead() {
         lexer.skip_next_token();
         let name = lexer.next_ident()?;
         let line = lexer.current_line();
-        let idx = Box::new(Exp::String { line, val: name });
-        exp = Box::new(Exp::TableAccess {
-            last_line: line,
-            prefix_exp: exp,
-            key_exp: idx,
-        });
+        let key = Box::new(Exp::String(name, line));
+        exp = Box::new(Exp::TableAccess(exp, key, line));
     }
 
     // check `:`
@@ -446,12 +400,8 @@ fn _parse_fn_name(lexer: &mut Lexer, has_colon: &mut bool) -> Result<Exp> {
         let name = lexer.next_ident()?;
         let line = lexer.current_line();
         *has_colon = true;
-        let idx = Box::new(Exp::String { line, val: name });
-        exp = Box::new(Exp::TableAccess {
-            last_line: line,
-            prefix_exp: exp,
-            key_exp: idx,
-        })
+        let key = Box::new(Exp::String(name, line));
+        exp = Box::new(Exp::TableAccess(exp, key, line));
     }
 
     Ok(*exp)
@@ -470,13 +420,7 @@ fn parse_exp12(lexer: &mut Lexer) -> Result<Exp> {
     while let Ok(Token::OpOr) = lexer.look_ahead() {
         let op = lexer.next_token().or(Err(Error::NotOperator { line: lexer.current_line() }))?;
         let line = lexer.current_line();
-
-        exp = Box::new(Exp::Binop {
-            line,
-            op,
-            exp1: exp,
-            exp2: Box::new(parse_exp11(lexer)?),
-        });
+        exp = Box::new(Exp::Binop(exp, op, Box::new(parse_exp11(lexer)?), line));
     }
 
     Ok(*exp)
@@ -488,12 +432,7 @@ fn parse_exp11(lexer: &mut Lexer) -> Result<Exp> {
     while let Ok(Token::OpAnd) = lexer.look_ahead() {
         let op = lexer.next_token()?;
         let line = lexer.current_line();
-        exp = Box::new(Exp::Binop {
-            line,
-            op,
-            exp1: exp,
-            exp2: Box::new(parse_exp10(lexer)?),
-        });
+        exp = Box::new(Exp::Binop(exp, op, Box::new(parse_exp10(lexer)?), line));
     }
     Ok(*exp)
 }
@@ -506,12 +445,7 @@ fn parse_exp10(lexer: &mut Lexer) -> Result<Exp> {
             Ok(Token::OpGe) | Ok(Token::OpGt) | Ok(Token::OpLe) | Ok(Token::OpLt) | Ok(Token::OpNe) | Ok(Token::OPEq) => {
                 let op = lexer.next_token()?;
                 let line = lexer.current_line();
-                exp = Box::new(Exp::Binop {
-                    line,
-                    op,
-                    exp1: exp,
-                    exp2: Box::new(parse_exp9(lexer)?),
-                });
+                exp = Box::new(Exp::Binop(exp, op, Box::new(parse_exp9(lexer)?), line));
             }
             _ => { break; }
         }
@@ -526,12 +460,7 @@ fn parse_exp9(lexer: &mut Lexer) -> Result<Exp> {
     while let Ok(Token::OpBitOr) = lexer.look_ahead() {
         let op = lexer.next_token()?;
         let line = lexer.current_line();
-        exp = Box::new(Exp::Binop {
-            line,
-            op,
-            exp1: exp,
-            exp2: Box::new(parse_exp8(lexer)?),
-        });
+        exp = Box::new(Exp::Binop(exp, op, Box::new(parse_exp8(lexer)?), line));
     }
     Ok(*exp)
 }
@@ -542,12 +471,7 @@ fn parse_exp8(lexer: &mut Lexer) -> Result<Exp> {
     while let Ok(Token::OpWave) = lexer.look_ahead() {
         let op = lexer.next_token()?;
         let line = lexer.current_line();
-        exp = Box::new(Exp::Binop {
-            line,
-            op,
-            exp1: exp,
-            exp2: Box::new(parse_exp7(lexer)?),
-        });
+        exp = Box::new(Exp::Binop(exp, op, Box::new(parse_exp7(lexer)?), line));
     }
     Ok(*exp)
 }
@@ -558,12 +482,7 @@ fn parse_exp7(lexer: &mut Lexer) -> Result<Exp> {
     while let Ok(Token::OpBitAnd) = lexer.look_ahead() {
         let op = lexer.next_token()?;
         let line = lexer.current_line();
-        exp = Box::new(Exp::Binop {
-            line,
-            op,
-            exp1: exp,
-            exp2: Box::new(parse_exp6(lexer)?),
-        });
+        exp = Box::new(Exp::Binop(exp, op, Box::new(parse_exp6(lexer)?), line));
     }
     Ok(*exp)
 }
@@ -576,12 +495,7 @@ fn parse_exp6(lexer: &mut Lexer) -> Result<Exp> {
             Ok(Token::OpShl) | Ok(Token::OpShr) => {
                 let op = lexer.next_token()?;
                 let line = lexer.current_line();
-                exp = Box::new(Exp::Binop {
-                    line,
-                    op,
-                    exp1: exp,
-                    exp2: Box::new(parse_exp5(lexer)?),
-                });
+                exp = Box::new(Exp::Binop(exp, op, Box::new(parse_exp5(lexer)?), line));
             }
             _ => { break; }
         }
@@ -604,10 +518,7 @@ fn parse_exp5(lexer: &mut Lexer) -> Result<Exp> {
                 exps.push(parse_exp4(lexer)?);
             }
 
-            Ok(Exp::Concat {
-                line,
-                exps,
-            })
+            Ok(Exp::Concat(exps, line))
         }
         _ => { Ok(exp) }
     }
@@ -621,12 +532,7 @@ fn parse_exp4(lexer: &mut Lexer) -> Result<Exp> {
             Ok(Token::OpAdd) | Ok(Token::OpMinus) => {
                 let op = lexer.next_token()?;
                 let line = lexer.current_line();
-                exp = Box::new(Exp::Binop {
-                    line,
-                    op,
-                    exp1: exp,
-                    exp2: Box::new(parse_exp3(lexer)?),
-                });
+                exp = Box::new(Exp::Binop(exp, op, Box::new(parse_exp3(lexer)?), line));
             }
             _ => { break; }
         }
@@ -643,12 +549,7 @@ fn parse_exp3(lexer: &mut Lexer) -> Result<Exp> {
             Ok(Token::OpMul) | Ok(Token::OpDiv) | Ok(Token::OpIDiv) | Ok(Token::OpMod) => {
                 let op = lexer.next_token()?;
                 let line = lexer.current_line();
-                exp = Box::new(Exp::Binop {
-                    line,
-                    op,
-                    exp1: exp,
-                    exp2: Box::new(parse_exp2(lexer)?),
-                });
+                exp = Box::new(Exp::Binop(exp, op, Box::new(parse_exp2(lexer)?), line));
             }
             _ => { break; }
         }
@@ -663,13 +564,8 @@ fn parse_exp2(lexer: &mut Lexer) -> Result<Exp> {
         Ok(Token::OpNot) | Ok(Token::OpLen) | Ok(Token::OpWave) | Ok(Token::OpMinus) => {
             let op = lexer.next_token()?;
             let line = lexer.current_line();
-            Ok(
-                Exp::Unop {
-                    line,
-                    op,
-                    exp: Box::new(parse_exp2(lexer)?),
-                }
-            )
+            let exp = Box::new(parse_exp2(lexer)?);
+            Ok(Exp::Unop(op, exp, line))
         }
         _ => Ok(parse_exp1(lexer)?),
     }
@@ -681,12 +577,7 @@ fn parse_exp1(lexer: &mut Lexer) -> Result<Exp> {
     if let Ok(Token::OpPow) = lexer.look_ahead() {
         let op = lexer.next_token().or(Err(Error::NotOperator { line: lexer.current_line() }))?;
         let line = lexer.current_line();
-        exp = Box::new(Exp::Binop {
-            line,
-            op,
-            exp1: exp,
-            exp2: Box::new(parse_exp2(lexer)?),
-        });
+        exp = Box::new(Exp::Binop(exp, op, Box::new(parse_exp2(lexer)?), line));
     }
     Ok(*exp)
 }
@@ -698,27 +589,27 @@ fn parse_exp0(lexer: &mut Lexer) -> Result<Exp> {
         Ok(Token::VarArg) => {
             lexer.skip_next_token();
             let line = lexer.current_line();
-            Ok(Exp::Vararg { line })
+            Ok(Exp::Vararg(line))
         }
         Ok(Token::KwNil) => {
             lexer.skip_next_token();
             let line = lexer.current_line();
-            Ok(Exp::Nil { line })
+            Ok(Exp::Nil(line))
         }
         Ok(Token::KwTrue) => {
             lexer.skip_next_token();
             let line = lexer.current_line();
-            Ok(Exp::True { line })
+            Ok(Exp::True(line))
         }
         Ok(Token::KwFalse) => {
             lexer.skip_next_token();
             let line = lexer.current_line();
-            Ok(Exp::False { line })
+            Ok(Exp::False(line))
         }
         Ok(Token::String(val)) => {
             lexer.skip_next_token();
             let line = lexer.current_line();
-            Ok(Exp::String { line, val })
+            Ok(Exp::String(val, line))
         }
         Ok(Token::Number(_)) => parse_number_exp(lexer),
 
@@ -739,10 +630,7 @@ fn parse_number_exp(lexer: &mut Lexer) -> Result<Exp> {
     let line = lexer.current_line();
     if let Ok(Token::Number(val)) = num {
         let val = parse_number(val)?;
-        Ok(Exp::Integer {
-            line,
-            val,
-        })
+        Ok(Exp::Integer(val, line))
     } else {
         Err(Error::IllegalNumLiteral { line: lexer.current_line() })
     }
@@ -755,7 +643,7 @@ fn parse_table_constructor_exp(lexer: &mut Lexer) -> Result<Exp> {
         return Err(Error::IllegalExpression { line: lexer.current_line() });
     }
     // [fieldlist]
-    let (key_exps, val_exps) = _parse_field_list(lexer)?;
+    let fields = _parse_field_list(lexer)?;
 
     // `}`
     if !lexer.check_next_token(Token::SepRcurly) {
@@ -763,12 +651,7 @@ fn parse_table_constructor_exp(lexer: &mut Lexer) -> Result<Exp> {
     }
 
     let last_line = lexer.current_line();
-    Ok(Exp::TableConstructor {
-        line,
-        last_line,
-        key_exps,
-        val_exps,
-    })
+    Ok(Exp::TableConstructor(fields, last_line))
 }
 
 fn parse_fn_def_exp(lexer: &mut Lexer) -> Result<Exp> {
@@ -798,13 +681,7 @@ fn parse_fn_def_exp(lexer: &mut Lexer) -> Result<Exp> {
         });
     }
     let last_line = lexer.current_line();
-    Ok(Exp::FnDef {
-        line,
-        last_line,
-        par_list,
-        is_vararg,
-        block,
-    })
+    Ok(Exp::FnDef(ParList::new(par_list, is_vararg), block, line, last_line))
 }
 
 fn parse_prefix_exp(lexer: &mut Lexer) -> Result<Exp> {
@@ -812,7 +689,7 @@ fn parse_prefix_exp(lexer: &mut Lexer) -> Result<Exp> {
     if let Ok(Token::Identifier(val)) = lexer.look_ahead() {
         lexer.skip_next_token();
         let line = lexer.current_line();
-        exp = Exp::Name { line, val };
+        exp = Exp::Name(val, line);
     } else {
         // `(` exp `)`
         exp = parse_parens_exp(lexer)?;
@@ -824,31 +701,23 @@ fn parse_prefix_exp(lexer: &mut Lexer) -> Result<Exp> {
             Ok(Token::SepLbrack) => {
                 // `[` exp `]`
                 lexer.skip_next_token();
-                let key_exp = Box::new(parse_exp(lexer)?);
+                let key = Box::new(parse_exp(lexer)?);
                 if !lexer.check_next_token(Token::SepRbrack) {
                     let line = lexer.current_line();
                     return Err(Error::NotMatchBrackets { line });
                 }
                 let last_line = lexer.current_line();
 
-                exp = Box::new(Exp::TableAccess {
-                    last_line,
-                    prefix_exp: exp,
-                    key_exp,
-                })
+                exp = Box::new(Exp::TableAccess(exp, key, last_line));
             }
             Ok(Token::SepDot) => {
                 lexer.skip_next_token();
                 let name = lexer.next_ident()?;
                 let line = lexer.current_line();
-                let key_exp = Box::new(Exp::String { line, val: name });
+                let key = Box::new(Exp::String(name, line));
 
                 let last_line = line;
-                exp = Box::new(Exp::TableAccess {
-                    last_line,
-                    prefix_exp: exp,
-                    key_exp,
-                });
+                exp = Box::new(Exp::TableAccess(exp, key, last_line));
             }
             Ok(Token::SepColon)
             | Ok(Token::SepLparen)
@@ -876,28 +745,19 @@ fn parse_parens_exp(lexer: &mut Lexer) -> Result<Exp> {
 
     // The semantics of vararg and fn call will be changed by parens
     let exp = match exp {
-        exp @ Exp::Vararg {
-            line: _
-        } => Exp::Parens(Box::new(exp)),
+        exp @ Exp::Vararg(
+            _
+        ) => Exp::Parens(Box::new(exp)),
 
-        exp @ Exp::FnCall {
-            line: _,
-            last_line: _,
-            prefix_exp: _,
-            name_exp: _,
-            args: _,
-        } => Exp::Parens(Box::new(exp)),
+        exp @ Exp::FnCall(
+            _,
+            _,
+            _,
+        ) => Exp::Parens(Box::new(exp)),
 
-        exp @ Exp::Name {
-            line: _,
-            val: _
-        } => Exp::Parens(Box::new(exp)),
+        exp @ Exp::Name(_, _) => Exp::Parens(Box::new(exp)),
 
-        exp @ Exp::TableAccess {
-            last_line: _,
-            prefix_exp: _,
-            key_exp: _,
-        } => Exp::Parens(Box::new(exp)),
+        exp @ Exp::TableAccess(_, _, _) => Exp::Parens(Box::new(exp)),
 
         _ => exp,
     };
@@ -912,14 +772,7 @@ fn _parse_fn_call_exp(lexer: &mut Lexer, prefix_exp: Box<Exp>) -> Result<Exp> {
     // args
     let args = _parse_fn_call_args(lexer)?;
     let last_line = lexer.current_line();
-
-    Ok(Exp::FnCall {
-        line,
-        last_line,
-        prefix_exp,
-        name_exp,
-        args,
-    })
+    Ok(Exp::FnCall(FnCall::new(prefix_exp, name_exp, args), line, last_line))
 }
 
 fn _parse_fn_name_exp(lexer: &mut Lexer) -> Result<Box<Exp>> {
@@ -927,10 +780,7 @@ fn _parse_fn_name_exp(lexer: &mut Lexer) -> Result<Box<Exp>> {
         lexer.skip_next_token();
         let val = lexer.next_ident()?;
         let line = lexer.current_line();
-        Ok(Box::new(Exp::String {
-            line,
-            val,
-        }))
+        Ok(Box::new(Exp::String(val, line)))
     } else {
         // just represent a option token
         Err(Error::NoMoreTokens { line: lexer.current_line() })
@@ -967,7 +817,7 @@ fn _parse_fn_call_args(lexer: &mut Lexer) -> Result<Vec<Exp>> {
         Ok(Token::String(val)) => {
             lexer.skip_next_token();
             let line = lexer.current_line();
-            Ok(vec![Exp::String { line, val }])
+            Ok(vec![Exp::String(val, line)])
         }
 
         _ => {
@@ -976,16 +826,15 @@ fn _parse_fn_call_args(lexer: &mut Lexer) -> Result<Vec<Exp>> {
     }
 }
 
-fn _parse_field_list(lexer: &mut Lexer) -> Result<(Vec<Option<Exp>>, Vec<Exp>)> {
-    let mut key_exps = vec![];
-    let mut val_exps = vec![];
+fn _parse_field_list(lexer: &mut Lexer) -> Result<Vec<Field>> {
+    let mut fields = vec![];
+
     if let Ok(Token::SepRcurly) = lexer.look_ahead() {
-        return Ok((key_exps, val_exps));
+        return Ok(fields);
     }
 
     let (k, v) = _parse_field(lexer)?;
-    key_exps.push(k);
-    val_exps.push(v);
+    fields.push(Field::new(k, v));
 
     while _is_field_sep(lexer.look_ahead()) {
         lexer.skip_next_token();
@@ -997,13 +846,12 @@ fn _parse_field_list(lexer: &mut Lexer) -> Result<(Vec<Option<Exp>>, Vec<Exp>)> 
 
             _ => {
                 let (k, v) = _parse_field(lexer)?;
-                key_exps.push(k);
-                val_exps.push(v);
+                fields.push(Field::new(k, v));
             }
         }
     }
 
-    Ok((key_exps, val_exps))
+    Ok(fields)
 }
 
 fn _parse_field(lexer: &mut Lexer) -> Result<(Option<Exp>, Exp)> {
@@ -1025,10 +873,10 @@ fn _parse_field(lexer: &mut Lexer) -> Result<(Option<Exp>, Exp)> {
 
     // `key` or `value`
     let exp = parse_exp(lexer)?;
-    if let Exp::Name { line, ref val } = exp {
+    if let Exp::Name(ref val, line) = exp {
         if let Ok(Token::OpAssign) = lexer.look_ahead() {
             lexer.skip_next_token();
-            let key = Exp::String { line, val: val.to_string() };
+            let key = Exp::String(val.to_string(), line);
             let val = parse_exp(lexer)?;
             return Ok((Some(key), val));
         }
@@ -1085,8 +933,8 @@ fn _is_return_or_block_end(tok: Result<Token>) -> bool {
 #[inline]
 fn _is_var_exp(exp: &Exp) -> bool {
     match exp {
-        Exp::Name { line: _, val: _ } => true,
-        Exp::TableAccess { last_line: _, prefix_exp: _, key_exp: _ } => true,
+        Exp::Name(_, _) => true,
+        Exp::TableAccess(_, _, _) => true,
         _ => false,
     }
 }
