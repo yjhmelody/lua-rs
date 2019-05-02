@@ -3,15 +3,16 @@
 #![allow(unused_mut)]
 #![allow(non_snake_case)]
 
-use core::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::id;
 use std::rc::Rc;
 
 use crate::binary::chunk::Prototype;
-use crate::compiler::ast::{Block, Exp, ParList, Stat};
+use crate::compiler::ast::{Block, Exp, FnCall, ForIn, ForNum, ParList, Stat};
 use crate::compiler::error::{Error, Result};
+use crate::compiler::lexer::Line;
+use crate::vm::opcode;
 
 const MAXARG_BX: isize = (1 << 18) - 1;
 // 262143
@@ -157,8 +158,30 @@ impl FnInfo {
         }
     }
 
-    fn get_jump_arg_a(&mut self) -> usize {
-        unimplemented!()
+    fn get_jump_arg_a(&mut self) -> u32 {
+        let mut has_captured_local_var = false;
+        let mut min_local_var_slot = self.max_regs;
+        let local_vars = self.get_current_scope_mut();
+        local_vars.clone().iter().for_each(|(k, v)| {
+            match v {
+                Some(local_var) => {
+                    if local_var.is_captured {
+                        has_captured_local_var = true;
+                    }
+                    // todo: fix it
+                    if local_var.slot < min_local_var_slot {
+                        min_local_var_slot = local_var.slot;
+                    }
+                }
+                _ => {}
+            }
+        });
+
+        if has_captured_local_var {
+            min_local_var_slot as u32 + 1
+        } else {
+            0
+        }
     }
 
     /// Add a local variable and return register index
@@ -219,27 +242,34 @@ impl FnInfo {
     }
 
     #[inline]
-    fn emit_ABC(&mut self, opcode: u32, a: u32, b: u32, c: u32) {
-        let ins = b << 23 | c << 14 | a << 6 | opcode;
+    fn emit_ABC(&mut self, line: Line, opcode: u8, a: u32, b: u32, c: u32) {
+        let ins = b << 23 | c << 14 | a << 6 | opcode as u32;
         self.instructions.push(ins);
     }
 
     #[inline]
-    fn emit_ABx(&mut self, opcode: u32, a: u32, bx: u32) {
-        let ins = bx << 14 | a << 6 | opcode;
+    fn emit_ABx(&mut self, line: Line, opcode: u8, a: u32, bx: u32) {
+        let ins = bx << 14 | a << 6 | opcode as u32;
         self.instructions.push(ins);
     }
 
     #[inline]
-    fn emit_AsBx(&mut self, opcode: u32, a: u32, b: u32) {
-        let ins = (b + MAXARG_SBX as u32) << 14 | a << 6 | opcode;
+    fn emit_AsBx(&mut self, line: Line, opcode: u8, a: u32, b: u32) {
+        let ins = (b + MAXARG_SBX as u32) << 14 | a << 6 | opcode as u32;
         self.instructions.push(ins);
     }
 
     #[inline]
-    fn emit_Ax(&mut self, opcode: u32, ax: u32) {
-        let ins = ax << 6 | opcode;
+    fn emit_Ax(&mut self, line: Line, opcode: u8, ax: u32) {
+        let ins = ax << 6 | opcode as u32;
         self.instructions.push(ins);
+    }
+
+    /// pc+=sBx; if (a) close all upvalues >= r[a - 1]
+    #[inline]
+    fn emit_jump(&mut self, line: Line, a: u32, sBx: u32) -> usize {
+        self.emit_AsBx(line, opcode::OP_JMP, a, sBx);
+        self.instructions.len() - 1
     }
 
     #[inline]
@@ -256,6 +286,14 @@ impl FnInfo {
         self.instructions[pc] = ins;
         unimplemented!()
     }
+
+
+    fn close_open_up_values(&mut self, line: Line) {
+        let a = self.get_jump_arg_a();
+        if a > 0 {
+            self.emit_jump(line, a, 0);
+        }
+    }
 }
 
 fn to_prototype(fn_info: FnInfo) -> Prototype {
@@ -263,39 +301,97 @@ fn to_prototype(fn_info: FnInfo) -> Prototype {
     unimplemented!()
 }
 
-fn codegen_block(fn_info: &mut FnInfo, node: &Block) {
-    for stat in &node.stats {
-        codegen_stat(fn_info, stat);
+
+impl FnInfo {
+    fn codegen_block(&mut self, block: &Block) -> Result<()> {
+        for stat in &block.stats {
+            self.codegen_stat(stat);
+        }
+        self.codegen_ret_stats(&block.ret_exps)
     }
 
-    codegen_ret_stats(fn_info, &node.ret_exps);
-}
+    /********************** statement code generation ************************/
 
-/********************** statement code generation ************************/
+    fn codegen_stat(&mut self, stat: &Stat) -> Result<()> {
+        match stat {
+            Stat::FnCall(fn_call, line, last_line) => self.codegen_fn_call_stat(fn_call),
+            Stat::Break(line) => self.codegen_break_stat(*line),
+            Stat::Do(block) => self.codegen_do_stat(&*block),
+            Stat::Repeat(exp, block) => self.codegen_repeat_stat(exp, &*block),
+            Stat::While(exp, block) => self.codegen_while_stat(exp, &*block),
+            Stat::Condition(exps, blocks) => self.codegen_condition_stat(exps, blocks),
+            Stat::ForNum(for_num, line1, line2) => self.codegen_for_num_stat(&*for_num, *line1, *line2),
+            Stat::ForIn(for_in, line) => self.codegen_for_in_stat(&*for_in, *line),
+            Stat::Assign(names, vals, line) => self.codegen_assign_stat(names, vals, *line),
 
-fn codegen_stat(fn_info: &mut FnInfo, stat: &Stat) {
-    match stat {
-        Stat::FnCall(fn_call, line, last_line) => { unimplemented!() }
-        _ => {}
+            _ => { Ok(()) }
+        }
     }
-}
 
-fn codegen_ret_stats(fn_info: &mut FnInfo, exps: &Vec<Exp>) {
-    unimplemented!()
-}
+    fn codegen_ret_stats(&mut self, exps: &Vec<Exp>) -> Result<()> {
+        unimplemented!()
+    }
 
-fn codegen_local_fn_def_stat(fn_info: &mut FnInfo, name: String, exp: &Exp) -> Result<()> {
-    let reg = fn_info.borrow_mut().add_local_var(name)?;
-    codegen_fn_def_exp(fn_info, exp)?;
-    Ok(())
-}
+    fn codegen_local_fn_def_stat(&mut self, name: String, exp: &Exp) -> Result<()> {
+        let reg = self.add_local_var(name)?;
+        self.codegen_fn_def_exp(exp)?;
+        Ok(())
+    }
 
-fn codegen_fn_call_stat(fn_info: &mut FnInfo) {}
+    fn codegen_fn_call_stat(&mut self, fn_call: &FnCall) -> Result<()> {
+        let reg = self.alloc_register()?;
+        self.codegen_fn_call_exp(fn_call, reg, 0)
+    }
 
-/********************** expression code generation ***********************/
+    fn codegen_break_stat(&mut self, line: Line) -> Result<()> {
+        let pc = self.emit_jump(line, 0, 0);
+        self.add_break_jump(pc)
+    }
 
-fn codegen_fn_def_exp(fn_info: &mut FnInfo, stat: &Exp) -> Result<()> {
-    unimplemented!()
+    fn codegen_do_stat(&mut self, block: &Block) -> Result<()> {
+        // not a loop block
+        self.enter_scope(false);
+        self.codegen_block(block)?;
+        self.close_open_up_values(block.last_line);
+        self.exit_scope()
+    }
+
+    fn codegen_repeat_stat(&mut self, exp: &Exp, block: &Block) -> Result<()> {
+        unimplemented!()
+    }
+
+
+    fn codegen_while_stat(&mut self, exp: &Exp, block: &Block) -> Result<()> {
+        let pc_before_exp = self.pc();
+        let reg = self.alloc_register();
+        unimplemented!()
+    }
+
+    fn codegen_condition_stat(&mut self, exp: &Vec<Exp>, block: &Vec<Block>) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_for_num_stat(&mut self, for_num: &ForNum, line1: Line, line2: Line) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_for_in_stat(&mut self, for_in: &ForIn, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_assign_stat(&mut self, names: &Vec<Exp>, vals: &Vec<Exp>, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+
+    /********************** expression code generation ***********************/
+
+    fn codegen_fn_def_exp(&mut self, stat: &Exp) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_fn_call_exp(&mut self, fn_call: &FnCall, reg: usize, line: Line) -> Result<()> {
+        unimplemented!()
+    }
 }
 
 
