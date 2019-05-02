@@ -1,7 +1,6 @@
 use std::result;
 
 use crate::compiler::lexer::Line;
-use crate::compiler::token::Token;
 
 // todo: better error reports
 /// Some Errors produced by parser and lexer which be dealt by parser for reporting syntax errors

@@ -637,7 +637,6 @@ fn parse_number_exp(lexer: &mut Lexer) -> Result<Exp> {
 }
 
 fn parse_table_constructor_exp(lexer: &mut Lexer) -> Result<Exp> {
-    let line = lexer.current_line();
     // `{`
     if !lexer.check_next_token(Token::SepLcurly) {
         return Err(Error::IllegalExpression { line: lexer.current_line() });

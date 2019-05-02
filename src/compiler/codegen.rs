@@ -1,3 +1,8 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_mut)]
+
+use core::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -194,6 +199,7 @@ impl FnInfo {
         Err(Error::NoLoop)
     }
 
+    /// Get up value's index
     fn up_value_index(&mut self, name: &String) -> Result<usize> {
         match self.up_values.get(name) {
             Some(upvalue) => {
@@ -248,8 +254,7 @@ impl FnInfo {
     }
 }
 
-
-fn codegen_block(fn_info: &Option<Rc<FnInfo>>, node: &Block) {
+fn codegen_block(fn_info: &mut FnInfo, node: &Block) {
     for stat in &node.stats {
         codegen_stat(fn_info, stat);
     }
@@ -257,67 +262,32 @@ fn codegen_block(fn_info: &Option<Rc<FnInfo>>, node: &Block) {
     codegen_ret_stats(fn_info, &node.ret_exps);
 }
 
-fn codegen_ret_stats(fn_info: &Option<Rc<FnInfo>>, exps: &Vec<Exp>) {
+fn codegen_ret_stats(fn_info: &mut FnInfo, exps: &Vec<Exp>) {
     unimplemented!()
 }
 
-fn codegen_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
+fn codegen_stat(fn_info: &mut FnInfo, stat: &Stat) {
     match stat {
-        Stat::FnCall(_, _, _) => { codegen_fn_call_stat(fn_info, stat) }
-
-        _ => { unimplemented!() }
+        Stat::FnCall(fn_call, line, last_line) => { unimplemented!() }
+        _ => {}
     }
 }
 
-fn codegen_fn_call_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
+/****************** statement code generation *********************/
+
+fn codegen_local_fn_def_stat(fn_info: &mut FnInfo, name: String, exp: &Exp) -> Result<()> {
+    let reg = fn_info.borrow_mut().add_local_var(name)?;
+    codegen_fn_def_exp(fn_info, exp)?;
+    Ok(())
+}
+
+
+/****************** expression code generation *********************/
+
+fn codegen_fn_def_exp(fn_info: &mut FnInfo, stat: &Exp) -> Result<()> {
     unimplemented!()
 }
 
-fn codegen_break_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
-    unimplemented!()
-}
-
-fn codegen_do_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
-    unimplemented!()
-}
-
-fn codegen_repeat_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
-    unimplemented!()
-}
-
-fn codegen_while_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
-    unimplemented!()
-}
-
-fn codegen_if_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
-    unimplemented!()
-}
-
-fn codegen_for_num_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
-    unimplemented!()
-}
-
-fn codegen_for_in_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
-    unimplemented!()
-}
-
-fn codegen_assign_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
-    unimplemented!()
-}
-
-fn codegen_local_var_decl_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
-    unimplemented!()
-}
-
-fn codegen_local_fn_def_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {}
-
-fn codegen_label_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
-    unimplemented!()
-}
-
-fn codegen_goto_stat(fn_info: &Option<Rc<FnInfo>>, stat: &Stat) {
-    unimplemented!()
-}
 
 #[inline]
 fn is_var_arg_or_fn_call(exp: &Exp) -> bool {
