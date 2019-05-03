@@ -7,9 +7,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::binary::chunk::{Constant, Prototype};
-use crate::compiler::ast::{Block, Exp, Field, FnCall, FnDef, ForIn, ForNum, ParList, Stat};
-use crate::compiler::error::{Error, Result};
+use crate::binary::chunk::*;
+use crate::compiler::ast::*;
+use crate::compiler::error::*;
 use crate::compiler::lexer::Line;
 use crate::compiler::token::Token;
 use crate::vm::opcode;
@@ -260,80 +260,6 @@ impl FnInfo {
 
 /********************** emit bytecode ************************/
 
-impl FnInfo {
-    #[inline]
-    fn emit_ABC(&mut self, line: Line, opcode: u8, a: isize, b: isize, c: isize) {
-        let ins = b << 23 | c << 14 | a << 6 | opcode as isize;
-        self.instructions.push(ins as u32);
-    }
-
-    #[inline]
-    fn emit_ABx(&mut self, line: Line, opcode: u8, a: isize, bx: isize) {
-        let ins = bx << 14 | a << 6 | opcode as isize;
-        self.instructions.push(ins as u32);
-    }
-
-    #[inline]
-    fn emit_AsBx(&mut self, line: Line, opcode: u8, a: isize, b: isize) {
-        let ins = (b + MAXARG_SBX) << 14 | a << 6 | opcode as isize;
-        self.instructions.push(ins as u32);
-    }
-
-    #[inline]
-    fn emit_Ax(&mut self, line: Line, opcode: u8, ax: isize) {
-        let ins = ax << 6 | opcode as isize;
-        self.instructions.push(ins as u32);
-    }
-
-    // pc+=sBx; if (a) close all upvalues >= r[a - 1]
-    fn emit_jump(&mut self, line: Line, a: isize, sBx: isize) -> usize {
-        self.emit_AsBx(line, opcode::OP_JMP, a, sBx);
-        self.instructions.len() - 1
-    }
-
-    // r[a], r[a+1], ..., r[a+b] = nil
-    fn emit_load_nil(&mut self, line: Line, a: isize, b: isize) {
-        self.emit_ABC(line, opcode::OP_LOADNIL, a, b - 1, 0);
-    }
-
-    // r[a] = b; if (c) pc++
-    fn emit_load_bool(&mut self, line: Line, a: isize, b: isize, c: isize) {
-        self.emit_ABC(line, opcode::OP_LOADBOOL, a, b, c);
-    }
-
-    // r[a] = kst[bx]
-    fn emit_load_k(&mut self, line: Line, a: isize, k: Constant) {
-        let idx = self.constant_index(&k) as isize;
-        if idx < (1 << 18) {
-            self.emit_ABx(line, opcode::OP_LOADK, a, idx);
-        } else {
-            self.emit_ABx(line, opcode::OP_LOADKX, a, 0);
-            self.emit_Ax(line, opcode::OP_EXTRAARG, idx);
-        }
-    }
-
-    // return r[a], ... ,r[a+b-2]
-    fn emit_return(&mut self, line: Line, a: isize, n: isize) {
-        self.emit_ABC(line, opcode::OP_RETURN, a, n + 1, 0);
-    }
-
-    // return current pc
-    #[inline]
-    fn pc(&self) -> usize {
-        self.instructions.len() - 1
-    }
-
-    fn fix_sbx(&mut self, pc: usize, sBx: isize) {
-        let mut ins = self.instructions[pc];
-        // clear sBx Op
-        ins = ins << 18 >> 18;
-        // reset sBx op
-        ins = ins | (sBx as u32 + MAXARG_SBX as u32) << 14;
-        self.instructions[pc] = ins;
-        unimplemented!()
-    }
-}
-
 /********************** statement code generation ************************/
 
 impl FnInfo {
@@ -367,7 +293,7 @@ impl FnInfo {
             self.emit_return(last_line, 0, 0);
             Ok(())
         } else {
-            let is_mult_ret = is_var_arg_or_fn_call(exps.last().unwrap());
+            let is_mult_ret = is_vararg_or_fn_call(exps.last().unwrap());
             let num = exps.len() - 1;
             for (i, exp) in exps.clone().iter().enumerate() {
                 let reg = self.alloc_register()? as isize;
@@ -447,6 +373,252 @@ impl FnInfo {
 /********************** expression code generation ***********************/
 
 impl FnInfo {
+    #[inline]
+    fn emit_ABC(&mut self, line: Line, opcode: u8, a: isize, b: isize, c: isize) {
+        let ins = b << 23 | c << 14 | a << 6 | opcode as isize;
+        self.instructions.push(ins as u32);
+    }
+
+    #[inline]
+    fn emit_ABx(&mut self, line: Line, opcode: u8, a: isize, bx: isize) {
+        let ins = bx << 14 | a << 6 | opcode as isize;
+        self.instructions.push(ins as u32);
+    }
+
+    #[inline]
+    fn emit_AsBx(&mut self, line: Line, opcode: u8, a: isize, b: isize) {
+        let ins = (b + MAXARG_SBX) << 14 | a << 6 | opcode as isize;
+        self.instructions.push(ins as u32);
+    }
+
+    #[inline]
+    fn emit_Ax(&mut self, line: Line, opcode: u8, ax: isize) {
+        let ins = ax << 6 | opcode as isize;
+        self.instructions.push(ins as u32);
+    }
+
+    // r[a] = r[b]
+    #[inline]
+    fn emit_move(&mut self, line: Line, a: isize, b: isize) {
+        self.emit_ABC(line, opcode::OP_MOVE, a, b, 0);
+    }
+
+    // r[a], r[a+1], ..., r[a+b] = nil
+    #[inline]
+    fn emit_load_nil(&mut self, line: Line, a: isize, b: isize) {
+        self.emit_ABC(line, opcode::OP_LOADNIL, a, b - 1, 0);
+    }
+
+    // r[a] = b; if (c) pc++
+    #[inline]
+    fn emit_load_bool(&mut self, line: Line, a: isize, b: isize, c: isize) {
+        self.emit_ABC(line, opcode::OP_LOADBOOL, a, b, c);
+    }
+
+    // r[a] = kst[bx]
+    #[inline]
+    fn emit_load_k(&mut self, line: Line, a: isize, k: Constant) {
+        let idx = self.constant_index(&k) as isize;
+        if idx < (1 << 18) {
+            self.emit_ABx(line, opcode::OP_LOADK, a, idx);
+        } else {
+            self.emit_ABx(line, opcode::OP_LOADKX, a, 0);
+            self.emit_Ax(line, opcode::OP_EXTRAARG, idx);
+        }
+    }
+    // r[a], r[a+1], ..., r[a+b-2] = vararg
+    #[inline]
+    fn emit_vararg(&mut self, line: Line, a: isize, n: isize) {
+        self.emit_ABC(line, opcode::OP_VARARG, a, n + 1, 0)
+    }
+
+    // r[a] = emit_closure(proto[bx])
+    #[inline]
+    fn emit_closure(&mut self, line: Line, a: isize, bx: isize) {
+        self.emit_ABx(line, opcode::OP_CLOSURE, a, bx);
+    }
+
+    // r[a] = {}
+    #[inline]
+    fn emit_new_table(&mut self, line: Line, a: isize, n_arr: isize, n_rec: isize) {
+        unimplemented!()
+    }
+
+    // r[a][(c-1)*FPF+i] := r[a+i], 1 <= i <= b
+    #[inline]
+    fn emit_set_list(&mut self, line: Line, a: isize, b: isize, c: isize) {
+        self.emit_ABC(line, opcode::OP_SETLIST, a, b, c);
+    }
+
+    // r[a] := r[b][rk(c)]
+    #[inline]
+    fn emit_get_table(&mut self, line: Line, a: isize, b: isize, c: isize) {
+        self.emit_ABC(line, opcode::OP_GETTABLE, a, b, c);
+    }
+
+    // r[a][rk(b)] = rk(c)
+    #[inline]
+    fn emit_set_table(&mut self, line: Line, a: isize, b: isize, c: isize) {
+        self.emit_ABC(line, opcode::OP_SETTABLE, a, b, c);
+    }
+
+    // r[a] = upval[b]
+    #[inline]
+    fn emit_get_up_value(&mut self, line: Line, a: isize, b: isize) {
+        self.emit_ABC(line, opcode::OP_GETUPVAL, a, b, 0);
+    }
+
+    // upval[b] = r[a]
+    #[inline]
+    fn emit_set_up_value(&mut self, line: Line, a: isize, b: isize) {
+        self.emit_ABC(line, opcode::OP_SETUPVAL, a, b, 0);
+    }
+
+    // r[a] = upval[b][rk(c)]
+    #[inline]
+    fn emit_get_table_up(&mut self, line: Line, a: isize, b: isize, c: isize) {
+        self.emit_ABC(line, opcode::OP_GETTABUP, a, b, c);
+    }
+
+    // upval[a][rk(b)] = rk(c)
+    #[inline]
+    fn emit_set_table_up(&mut self, line: Line, a: isize, b: isize, c: isize) {
+        self.emit_ABC(line, opcode::OP_SETTABUP, a, b, c);
+    }
+
+    // r[a], ..., r[a+c-2] = r[a](r[a+1], ..., r[a+b-1])
+    #[inline]
+    fn emit_call(&mut self, line: Line, a: isize, arg_num: isize, ret_num: isize) {
+        self.emit_ABC(line, opcode::OP_CALL, a, arg_num + 1, ret_num + 1);
+    }
+
+    // return r[a](r[a+1], ... ,r[a+b-1])
+    #[inline]
+    fn emit_tail_call(&mut self, line: Line, a: isize, arg_num: isize) {
+        self.emit_ABC(line, opcode::OP_TAILCALL, a, arg_num + 1, 0);
+    }
+
+    // return r[a], ... , r[a+b-1]
+    #[inline]
+    fn emit_return(&mut self, line: Line, a: isize, n: isize) {
+        self.emit_ABC(line, opcode::OP_RETURN, a, n + 1, 0);
+    }
+
+    // r[a+1] := r[b]; r[a] := r[b][rk(c)]
+    #[inline]
+    fn emit_self(&mut self, line: Line, a: isize, b: isize, c: isize) {
+        self.emit_ABC(line, opcode::OP_SELF, a, b, c);
+    }
+
+
+    // pc += sBx; if (a) close all upvalues >= r[a-1]
+    #[inline]
+    fn emit_jump(&mut self, line: Line, a: isize, sBx: isize) -> usize {
+        self.emit_AsBx(line, opcode::OP_JMP, a, sBx);
+        self.instructions.len() - 1
+    }
+
+    // if not (r[a] <==> c) then pc++
+    #[inline]
+    fn emit_test(&mut self, line: Line, a: isize, c: isize) {
+        self.emit_ABC(line, opcode::OP_TEST, a, 0, c);
+    }
+
+    // if (r[b] <==> c) then r[a] := r[b] else pc++
+    #[inline]
+    fn emit_test_set(&mut self, line: Line, a: isize, b: isize, c: isize) {
+        self.emit_ABC(line, opcode::OP_TEST, a, b, c);
+    }
+
+    #[inline]
+    fn emit_for_prep(&mut self, line: Line, a: isize, sBx: isize) -> isize {
+        self.emit_AsBx(line, opcode::OP_FORPREP, a, sBx);
+        self.instructions.len() as isize - 1
+    }
+
+    #[inline]
+    fn emit_for_loop(&mut self, line: Line, a: isize, sBx: isize) -> isize {
+        self.emit_AsBx(line, opcode::OP_FORLOOP, a, sBx);
+        self.instructions.len() as isize - 1
+    }
+
+    // r(a+3), ... ,r(a+2+c) := r(a)(r(a+1), r(a+2));
+    #[inline]
+    fn emit_t_for_call(&mut self, line: Line, a: isize, c: isize) {
+        // todo
+        self.emit_ABC(line, opcode::OP_TFORCALL, a, 0, c);
+    }
+
+    // if r(a+1) ~= nil then { r(a) = r(a+1); pc += sBx }
+    #[inline]
+    fn emit_t_for_loop(&mut self, line: Line, a: isize, sBx: isize) {
+        self.emit_AsBx(line, opcode::OP_TFORLOOP, a, sBx);
+    }
+
+    // r[a] = op r[b]
+    #[inline]
+    fn emit_unary_op(&mut self, line: Line, op: &Token, a: isize, b: isize) {
+        match op {
+            Token::OpNot => self.emit_ABC(line, opcode::OP_NOT, a, b, 0),
+            Token::OpWave => self.emit_ABC(line, opcode::OP_BNOT, a, b, 0),
+            Token::OpLen => self.emit_ABC(line, opcode::OP_LEN, a, b, 0),
+            Token::OpMinus => self.emit_ABC(line, opcode::OP_UNM, a, b, 0),
+            _ => unreachable!()
+        }
+    }
+
+    // r[a] = rk[b] op rk[c]
+    // arith & bitwise & relational
+    fn emit_binary_op(&mut self, line: Line, op: &Token, a: isize, b: isize, c: isize) {
+        match op {
+            Token::OpAdd => self.emit_ABC(line, opcode::OP_ADD, a, b, c),
+            Token::OpMinus => self.emit_ABC(line, opcode::OP_SUB, a, b, c),
+            Token::OpMul => self.emit_ABC(line, opcode::OP_MUL, a, b, c),
+            Token::OpMod => self.emit_ABC(line, opcode::OP_MOD, a, b, c),
+            Token::OpPow => self.emit_ABC(line, opcode::OP_POW, a, b, c),
+            Token::OpDiv => self.emit_ABC(line, opcode::OP_DIV, a, b, c),
+            Token::OpIDiv => self.emit_ABC(line, opcode::OP_IDIV, a, b, c),
+            Token::OpBitAnd => self.emit_ABC(line, opcode::OP_BAND, a, b, c),
+            Token::OpWave => self.emit_ABC(line, opcode::OP_BXOR, a, b, c),
+            Token::OpShl => self.emit_ABC(line, opcode::OP_SHL, a, b, c),
+            Token::OpShr => self.emit_ABC(line, opcode::OP_SHR, a, b, c),
+            // relational ops
+            op => {
+                match op {
+                    Token::OPEq => self.emit_ABC(line, opcode::OP_EQ, 1, b, c),
+                    Token::OpNe => self.emit_ABC(line, opcode::OP_EQ, 0, b, c),
+                    Token::OpLt => self.emit_ABC(line, opcode::OP_LT, 1, b, c),
+                    Token::OpGt => self.emit_ABC(line, opcode::OP_LT, 1, c, b),
+                    Token::OpLe => self.emit_ABC(line, opcode::OP_LE, 1, b, c),
+                    Token::OpGe => self.emit_ABC(line, opcode::OP_LE, 1, c, b),
+                    _ => unreachable!()
+                }
+
+                self.emit_jump(line, 0, 1);
+                self.emit_load_bool(line, a, 0, 1);
+                self.emit_load_bool(line, a, 1, 0);
+            }
+        }
+    }
+
+    // return current pc
+    #[inline]
+    fn pc(&self) -> usize {
+        self.instructions.len() - 1
+    }
+
+    fn fix_sbx(&mut self, pc: usize, sBx: isize) {
+        let mut ins = self.instructions[pc];
+        // clear sBx Op
+        ins = ins << 18 >> 18;
+        // reset sBx op
+        ins = ins | (sBx as u32 + MAXARG_SBX as u32) << 14;
+        self.instructions[pc] = ins;
+        unimplemented!()
+    }
+}
+
+impl FnInfo {
     fn codegen_exp(&mut self, exp: &Exp, a: isize, n: isize) {
         match exp {
             Exp::Nil(line) => self.emit_load_nil(*line, a, n),
@@ -506,7 +678,7 @@ impl FnInfo {
 }
 
 #[inline]
-fn is_var_arg_or_fn_call(exp: &Exp) -> bool {
+fn is_vararg_or_fn_call(exp: &Exp) -> bool {
     match exp {
         Exp::Vararg(_) => true,
         Exp::FnCall(_) => true,
