@@ -187,10 +187,7 @@ impl LuaAPI for LuaState {
 
     #[inline]
     fn to_integerx(&self, idx: isize) -> Option<i64> {
-        match self.stack.get(idx) {
-            LuaValue::Integer(i) => Some(i),
-            _ => None,
-        }
+        self.stack.get(idx).to_integer()
     }
 
     #[inline]
@@ -200,11 +197,7 @@ impl LuaAPI for LuaState {
 
     #[inline]
     fn to_numberx(&self, idx: isize) -> Option<f64> {
-        match self.stack.get(idx) {
-            LuaValue::Number(n) => Some(n),
-            LuaValue::Integer(i) => Some(i as f64),
-            _ => None,
-        }
+        self.stack.get(idx).to_number()
     }
 
     #[inline]
