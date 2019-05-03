@@ -1,5 +1,6 @@
 pub mod consts;
 
+/// Lua State API
 pub trait LuaAPI {
     /* basic stack manipulation */
     fn get_top(&self) -> isize;
@@ -51,4 +52,13 @@ pub trait LuaAPI {
     /* miscellaneous functions */
     fn len(&mut self, idx: isize);
     fn concat(&mut self, n: isize);
+}
+
+/// Lua VM API
+pub trait LuaVM: LuaAPI {
+    fn pc(&self) -> isize;
+    fn add_pc(&mut self, n: isize);
+    fn fetch(&mut self) -> u32;
+    fn get_const(&mut self, idx: isize);
+    fn get_rk(&mut self, rk: isize);
 }
