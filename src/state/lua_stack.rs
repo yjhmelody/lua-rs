@@ -6,28 +6,34 @@ pub struct LuaStack {
 }
 
 impl LuaStack {
+    #[inline]
     pub fn new(size: usize) -> LuaStack {
         LuaStack {
             vec: Vec::with_capacity(size),
         }
     }
 
+    #[inline]
     pub fn top(&self) -> isize {
         self.vec.len() as isize
     }
 
+    #[inline]
     pub fn check(&mut self, n: usize) {
         self.vec.reserve(n);
     }
 
+    #[inline]
     pub fn push(&mut self, val: LuaValue) {
         self.vec.push(val);
     }
 
+    #[inline]
     pub fn pop(&mut self) -> LuaValue {
         self.vec.pop().unwrap()
     }
 
+    #[inline]
     pub fn abs_index(&self, idx: isize) -> isize {
         if idx >= 0 {
             idx
@@ -36,6 +42,7 @@ impl LuaStack {
         }
     }
 
+    #[inline]
     pub fn is_valid(&self, idx: isize) -> bool {
         let abs_idx = self.abs_index(idx);
         abs_idx > 0 && abs_idx <= self.top()

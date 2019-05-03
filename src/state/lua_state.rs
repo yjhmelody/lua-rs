@@ -112,6 +112,7 @@ impl LuaAPI for LuaState {
         }
     }
 
+    #[inline]
     fn type_id(&self, idx: isize) -> i8 {
         if self.stack.is_valid(idx) {
             self.stack.get(idx).type_id()
@@ -120,43 +121,53 @@ impl LuaAPI for LuaState {
         }
     }
 
+    #[inline]
     fn is_none(&self, idx: isize) -> bool {
         self.type_id(idx) == LUA_TNONE
     }
 
+    #[inline]
     fn is_nil(&self, idx: isize) -> bool {
         self.type_id(idx) == LUA_TNIL
     }
 
+    #[inline]
     fn is_none_or_nil(&self, idx: isize) -> bool {
         self.type_id(idx) <= LUA_TNIL
     }
 
+    #[inline]
     fn is_boolean(&self, idx: isize) -> bool {
         self.type_id(idx) == LUA_TBOOLEAN
     }
 
+    #[inline]
     fn is_table(&self, idx: isize) -> bool {
         self.type_id(idx) == LUA_TTABLE
     }
 
+    #[inline]
     fn is_function(&self, idx: isize) -> bool {
         self.type_id(idx) == LUA_TFUNCTION
     }
 
+    #[inline]
     fn is_thread(&self, idx: isize) -> bool {
         self.type_id(idx) == LUA_TTHREAD
     }
 
+    #[inline]
     fn is_string(&self, idx: isize) -> bool {
         let t = self.type_id(idx);
         t == LUA_TSTRING || t == LUA_TNUMBER
     }
 
+    #[inline]
     fn is_number(&self, idx: isize) -> bool {
         self.to_numberx(idx).is_some()
     }
 
+    #[inline]
     fn is_integer(&self, idx: isize) -> bool {
         match self.stack.get(idx) {
             LuaValue::Integer(_) => true,
@@ -164,14 +175,17 @@ impl LuaAPI for LuaState {
         }
     }
 
+    #[inline]
     fn to_boolean(&self, idx: isize) -> bool {
         self.stack.get(idx).to_boolean()
     }
 
+    #[inline]
     fn to_integer(&self, idx: isize) -> i64 {
-        self.to_integerx(idx).unwrap()
+        self.to_integerx(idx).unwrap_or_default()
     }
 
+    #[inline]
     fn to_integerx(&self, idx: isize) -> Option<i64> {
         match self.stack.get(idx) {
             LuaValue::Integer(i) => Some(i),
@@ -179,10 +193,12 @@ impl LuaAPI for LuaState {
         }
     }
 
+    #[inline]
     fn to_number(&self, idx: isize) -> f64 {
-        self.to_numberx(idx).unwrap()
+        self.to_numberx(idx).unwrap_or_default()
     }
 
+    #[inline]
     fn to_numberx(&self, idx: isize) -> Option<f64> {
         match self.stack.get(idx) {
             LuaValue::Number(n) => Some(n),
@@ -191,10 +207,12 @@ impl LuaAPI for LuaState {
         }
     }
 
+    #[inline]
     fn to_string(&self, idx: isize) -> String {
-        self.to_stringx(idx).unwrap()
+        self.to_stringx(idx).unwrap_or_default()
     }
 
+    #[inline]
     fn to_stringx(&self, idx: isize) -> Option<String> {
         match self.stack.get(idx) {
             LuaValue::String(s) => Some(s),
@@ -206,22 +224,27 @@ impl LuaAPI for LuaState {
 
     /* push functions (rust -> stack) */
 
+    #[inline]
     fn push_nil(&mut self) {
         self.stack.push(LuaValue::Nil);
     }
 
+    #[inline]
     fn push_boolean(&mut self, b: bool) {
         self.stack.push(LuaValue::Boolean(b));
     }
 
+    #[inline]
     fn push_integer(&mut self, n: i64) {
         self.stack.push(LuaValue::Integer(n));
     }
 
+    #[inline]
     fn push_number(&mut self, n: f64) {
         self.stack.push(LuaValue::Number(n));
     }
 
+    #[inline]
     fn push_string(&mut self, s: String) {
         self.stack.push(LuaValue::String(s));
     }
