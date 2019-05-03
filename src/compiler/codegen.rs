@@ -5,6 +5,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::iter;
 use std::rc::Rc;
 
 use crate::binary::chunk::*;
@@ -57,11 +58,15 @@ pub struct FnInfo {
     /// Store Lua instructions
     instructions: Vec<u32>,
     /// Nested Functions
-    sub_fns: Vec<FnInfo>,
+    sub_fns: Vec<Rc<FnInfo>>,
     /// The function's param num
     num_params: usize,
     /// Has `...`
     is_vararg: bool,
+    /// For debug
+    line_nums: Vec<u32>,
+    line: Line,
+    last_line: Line,
 }
 
 /********************** keep function information ************************/
@@ -69,7 +74,7 @@ pub struct FnInfo {
 impl FnInfo {
     /// Create a FnInfo structure
     #[inline]
-    fn new(parent: Option<Rc<RefCell<FnInfo>>>, par_list: ParList, block: Box<Block>) -> Self {
+    fn new(parent: Option<Rc<RefCell<FnInfo>>>, par_list: ParList, block: Box<Block>, line: Line, last_line: Line) -> Self {
         let is_vararg = par_list.is_vararg;
         let num_params = par_list.params.len();
         Self {
@@ -85,6 +90,9 @@ impl FnInfo {
             sub_fns: Vec::new(),
             num_params,
             is_vararg,
+            line_nums: Vec::new(),
+            line,
+            last_line,
         }
     }
 
@@ -243,13 +251,64 @@ impl FnInfo {
         }
     }
 
-    fn to_prototype(&self) -> Prototype {
-        let constants = self.constants.iter();
+    fn to_prototype(&self) -> Rc<Prototype> {
+        Rc::new(Prototype {
+            source: None,
+            line_defined: self.line as u32,
+            last_line_defined: self.last_line as u32,
+            num_params: self.num_params as u8,
+            is_vararg: self.is_vararg as u8,
+            max_stack_size: self.max_regs as u8,
+            code: self.instructions.clone(),
+            constants: self.get_constants(),
+            up_values: self.get_up_values(),
+            prototypes: Self::to_prototypes(&self.sub_fns),
+            line_info: self.line_nums.clone(),
+            local_vars: self.get_local_vars(),
+            up_value_names: self.get_up_value_names(),
+        })
+    }
+
+    fn to_prototypes(sub_fns: &Vec<Rc<FnInfo>>) -> Vec<Rc<Prototype>> {
+        sub_fns.iter().map(|sub_fn| {
+            sub_fn.clone().to_prototype()
+        }).collect()
+    }
+
+    fn get_local_vars(&self) -> Vec<LocalVar> {
         unimplemented!()
+    }
+
+    fn get_up_value_names(&self) -> Vec<String> {
+        unimplemented!()
+    }
+
+    fn get_constants(&self) -> Vec<Constant> {
+        let mut consts: Vec<Constant> = iter::repeat(Constant::Nil).take(self.constants.len()).collect();
+        self.constants.iter().for_each(|(cst, &index)| {
+            consts[index] = cst.clone();
+        });
+        consts
+    }
+
+    fn get_up_values(&self) -> Vec<UpValue> {
+        let mut up_vals: Vec<UpValue> = iter::repeat(UpValue::default()).take(self.up_values.len()).collect();
+
+        self.up_values.iter().for_each(|(_, up_val)| {
+            // instack
+            if up_val.up_value_index.is_some() {
+                up_vals[up_val.index] = UpValue::new(1, up_val.local_var_slot.unwrap() as u8);
+            } else {
+                up_vals[up_val.index] = UpValue::new(0, up_val.up_value_index.unwrap() as u8);
+            }
+        });
+
+        up_vals
     }
 }
 
 /********************** emit bytecode ************************/
+
 impl FnInfo {
     #[inline]
     fn emit_ABC(&mut self, line: Line, opcode: u8, a: isize, b: isize, c: isize) {
@@ -531,7 +590,7 @@ impl FnInfo {
         } else {
             let is_mult_ret = is_vararg_or_fn_call(exps.last().unwrap());
             let num = exps.len() - 1;
-            for (i, exp) in exps.clone().iter().enumerate() {
+            for (i, exp) in exps.iter().enumerate() {
                 let reg = self.alloc_register()? as isize;
                 // has `...` or function call
                 if i == num && is_mult_ret {

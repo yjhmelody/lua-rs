@@ -25,6 +25,7 @@ pub const TAG_SHORT_STR: u8 = 0x04;
 pub const TAG_LONG_STR: u8 = 0x14;
 
 
+/// Lua Binary Chunk
 #[derive(Debug)]
 struct BinaryChunk {
     header: Header,
@@ -48,7 +49,7 @@ struct Header {
     luac_num: f64,
 }
 
-// function prototype
+/// Lua Function Prototype
 #[derive(Debug)]
 pub struct Prototype {
     pub source: Option<String>,
@@ -69,10 +70,29 @@ pub struct Prototype {
     pub up_value_names: Vec<String>, // debug
 }
 
-#[derive(Debug)]
+/// Lua Up Value
+#[derive(Debug, Copy, Clone)]
 pub struct UpValue {
     pub instack: u8,
     pub idx: u8,
+}
+
+impl Default for UpValue {
+    fn default() -> Self {
+        Self {
+            instack: 0,
+            idx: 0,
+        }
+    }
+}
+
+impl UpValue {
+    pub fn new(instack: u8, idx: u8) -> Self {
+        Self {
+            instack,
+            idx,
+        }
+    }
 }
 
 #[derive(Debug)]
