@@ -5,13 +5,13 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::process::id;
 use std::rc::Rc;
 
 use crate::binary::chunk::{Constant, Prototype};
-use crate::compiler::ast::{Block, Exp, FnCall, ForIn, ForNum, ParList, Stat};
+use crate::compiler::ast::{Block, Exp, Field, FnCall, ForIn, ForNum, ParList, Stat};
 use crate::compiler::error::{Error, Result};
 use crate::compiler::lexer::Line;
+use crate::compiler::token::Token;
 use crate::vm::opcode;
 
 /// 262143
@@ -19,7 +19,7 @@ const MAXARG_BX: isize = (1 << 18) - 1;
 /// 131071
 const MAXARG_SBX: isize = MAXARG_BX >> 1;
 
-
+/// Local Variable Information
 #[derive(Debug)]
 struct LocalVarInfo {
     scope_level: usize,
@@ -27,6 +27,7 @@ struct LocalVarInfo {
     is_captured: bool,
 }
 
+/// Up Value Information
 #[derive(Debug, Copy, Clone)]
 struct UpValueInfo {
     local_var_slot: usize,
@@ -35,13 +36,13 @@ struct UpValueInfo {
     index: usize,
 }
 
-/// 符号表的设计：作用域链
+/// Function Information Table for Lua
 #[derive(Debug)]
 struct FnInfo {
     constants: HashMap<Constant, usize>,
-    /// num of used regs
+    /// Num of used regs
     used_regs: usize,
-    /// maximum need of num of regs
+    /// Maximum need of num of regs
     max_regs: usize,
     /// Block scope level
     scope_level: usize,
@@ -55,11 +56,11 @@ struct FnInfo {
     up_values: HashMap<String, UpValueInfo>,
     /// Store Lua instructions
     instructions: Vec<u32>,
-    /// nested Functions
+    /// Nested Functions
     sub_fns: Vec<FnInfo>,
     /// The function's param num
     num_params: usize,
-    /// has `...`
+    /// Has `...`
     is_vararg: bool,
 }
 
@@ -426,23 +427,52 @@ impl FnInfo {
             Exp::Integer(num, line) => self.emit_load_k(*line, a, Constant::Integer(*num)),
             Exp::Float(num, line) => self.emit_load_k(*line, a, Constant::Number(*num)),
             Exp::String(s, line) => self.emit_load_k(*line, a, Constant::String(s.clone())),
+            Exp::Name(name, line) => { self.codegen_name_exp(name, *line); }
             Exp::Parens(exp) => self.codegen_exp(&*exp, a, n),
             Exp::Vararg(line) => { self.codegen_vararg_exp(*line); }
+            Exp::Unop(op, exp, line) => {}
+            Exp::Binop(exp1, op, exp2, line) => { self.codegen_binop_exp(&*exp1, op, &*exp2, *line); }
+            Exp::Concat(exps, line) => { self.codegen_concat_exp(exps, *line); }
+            Exp::TableConstructor(fields, line) => { self.codegen_table_constructor_exp(fields, *line); }
+            Exp::TableAccess(obj, key, line) => { self.codegen_table_access_exp(&*obj, &*key, *line); }
             Exp::FnDef(par_list, block, line1, line2) => { self.codegen_fn_def_exp(par_list, &*block, *line1, *line2); }
-
-            _ => {}
+            Exp::FnCall(fn_call, line1, line2) => { self.codegen_fn_call_exp(fn_call, *line1, *line2); }
         }
+    }
+
+    fn codegen_name_exp(&mut self, name: &String, line: Line) -> Result<()> {
+        unimplemented!()
     }
 
     fn codegen_fn_def_exp(&mut self, par_list: &ParList, block: &Block, line1: Line, line2: Line) -> Result<()> {
         unimplemented!()
     }
 
-    fn codegen_fn_call_exp(&mut self, fn_call: &FnCall, reg: usize, line: Line) -> Result<()> {
+    fn codegen_vararg_exp(&mut self, line: Line) -> Result<()> {
         unimplemented!()
     }
 
-    fn codegen_vararg_exp(&mut self, line: Line) -> Result<()> {
+    fn codegen_unop_exp(&mut self, op: &Token, exp: &Exp, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_binop_exp(&mut self, exp1: &Exp, op: &Token, exp2: &Exp, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_concat_exp(&mut self, exps: &Vec<Exp>, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_table_constructor_exp(&mut self, fields: &Vec<Field>, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_table_access_exp(&mut self, obj: &Exp, key: &Exp, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_fn_call_exp(&mut self, fn_call: &FnCall, line1: Line, line2: Line) -> Result<()> {
         unimplemented!()
     }
 }

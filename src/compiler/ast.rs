@@ -72,7 +72,7 @@ pub enum Exp {
     FnCall(FnCall, Line, Line),
 }
 
-
+/// The structure of `for num`
 #[derive(Debug)]
 pub struct ForNum {
     pub name: String,
@@ -94,6 +94,7 @@ impl ForNum {
     }
 }
 
+/// The structure of `for in`
 #[derive(Debug)]
 pub struct ForIn {
     pub name_list: Vec<String>,
@@ -111,6 +112,7 @@ impl ForIn {
     }
 }
 
+/// Table's field
 #[derive(Debug)]
 pub struct Field {
     pub key: Option<Exp>,
@@ -121,6 +123,7 @@ impl Field {
     pub fn new(key: Option<Exp>, val: Exp) -> Self { Self { key, val } }
 }
 
+/// Function call structure
 #[derive(Debug)]
 pub struct FnCall {
     pub prefix: Box<Exp>,
@@ -138,7 +141,7 @@ impl FnCall {
     }
 }
 
-
+/// Function parameters
 #[derive(Debug)]
 pub struct ParList {
     pub params: Vec<String>,
