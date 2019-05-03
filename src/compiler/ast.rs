@@ -36,16 +36,16 @@ pub enum Stat {
     /// exps stores conditions. compile `else` to `elseif true`
     Condition(Vec<Exp>, Vec<Block>),
     /* line of for, line of do */
-    ForNum(Box<ForNum>, Line, Line),
+    ForNum(Box<ForNum>),
     /* line of do */
     ForIn(Box<ForIn>, Line),
     /* last_line */
     LocalVarDecl(Vec<String>, Vec<Exp>, Line),
-    LocalFnDef(String, Exp),
     /* last line */
     Assign(Vec<Exp>, Vec<Exp>, Line),
+    LocalFnDef(String, FnDef),
     /// function call is either expression or statement
-    FnCall(FnCall, Line, Line),
+    FnCall(FnCall),
 }
 
 /// Lua expression
@@ -68,9 +68,31 @@ pub enum Exp {
     TableConstructor(Vec<Field>, Line),
     /// (Object, Key)
     TableAccess(Box<Exp>, Box<Exp>, Line),
-    FnDef(ParList, Box<Block>, Line, Line),
-    FnCall(FnCall, Line, Line),
+    FnDef(FnDef),
+    /// function call is either expression or statement
+    FnCall(FnCall),
 }
+
+/// Lua Function Definition
+#[derive(Debug)]
+pub struct FnDef {
+    pub par_list: ParList,
+    pub block: Box<Block>,
+    pub line: Line,
+    pub last_line: Line,
+}
+
+impl FnDef {
+    pub fn new(par_list: ParList, block: Box<Block>, line: Line, last_line: Line) -> Self {
+        Self {
+            par_list,
+            block,
+            line,
+            last_line,
+        }
+    }
+}
+
 
 /// The structure of `for num`
 #[derive(Debug)]
@@ -80,16 +102,20 @@ pub struct ForNum {
     pub limit: Exp,
     pub step: Exp,
     pub block: Box<Block>,
+    pub line_of_do: Line,
+    pub line_of_for: Line,
 }
 
 impl ForNum {
-    pub fn new(name: String, init: Exp, limit: Exp, step: Exp, block: Box<Block>) -> Box<Self> {
+    pub fn new(name: String, init: Exp, limit: Exp, step: Exp, block: Box<Block>, line_of_for: Line, line_of_do: Line) -> Box<Self> {
         Box::new(Self {
             name,
             init,
             limit,
             step,
             block,
+            line_of_for,
+            line_of_do,
         })
     }
 }
@@ -129,14 +155,18 @@ pub struct FnCall {
     pub prefix: Box<Exp>,
     pub name: Option<Box<Exp>>,
     pub args: Vec<Exp>,
+    pub line: Line,
+    pub last_line: Line,
 }
 
 impl FnCall {
-    pub fn new(prefix: Box<Exp>, name: Option<Box<Exp>>, args: Vec<Exp>) -> Self {
+    pub fn new(prefix: Box<Exp>, name: Option<Box<Exp>>, args: Vec<Exp>, line: Line, last_line: Line) -> Self {
         Self {
             prefix,
             name,
             args,
+            line,
+            last_line,
         }
     }
 }

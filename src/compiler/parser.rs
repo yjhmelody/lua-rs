@@ -251,7 +251,7 @@ fn _parse_for_num_stat(lexer: &mut Lexer, line_of_for: Line, var_name: String) -
         }
     };
 
-    Ok(Stat::ForNum(ForNum::new(var_name, init_exp, limit_exp, step_exp, block), line_of_for, line_of_do))
+    Ok(Stat::ForNum(ForNum::new(var_name, init_exp, limit_exp, step_exp, block, line_of_for, line_of_do)))
 }
 
 fn parse_local_assign_or_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
@@ -267,7 +267,12 @@ fn _parse_local_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
     lexer.skip_next_token();
     let name = lexer.next_ident()?;
     let exp = parse_fn_def_exp(lexer)?;
-    Ok(Stat::LocalFnDef(name, exp))
+    match exp {
+        Exp::FnDef(fn_def) => {
+            Ok(Stat::LocalFnDef(name, fn_def))
+        }
+        _ => unreachable!()
+    }
 }
 
 fn _parse_local_var_decl_stat(lexer: &mut Lexer) -> Result<Stat> {
@@ -290,8 +295,8 @@ fn _parse_local_var_decl_stat(lexer: &mut Lexer) -> Result<Stat> {
 fn parse_assign_or_fn_call_stat(lexer: &mut Lexer) -> Result<Stat> {
     let prefix_exp = parse_prefix_exp(lexer);
     match prefix_exp {
-        Ok(Exp::FnCall(fn_call, line, last_line)) => {
-            Ok(Stat::FnCall(fn_call, line, last_line))
+        Ok(Exp::FnCall(fn_call)) => {
+            Ok(Stat::FnCall(fn_call))
         }
         _ => {
             parse_assign_stat(lexer, prefix_exp.unwrap())
@@ -321,13 +326,14 @@ fn parse_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
     // v:name(args) => v.name(self, args)
     // insert `self` to the first arg
     // todo: refactor
-    if let Exp::FnDef(ref mut par_list, _, _, last_line) = fn_body {
+    if let Exp::FnDef(ref mut fn_def) = fn_body {
         if has_colon {
-            par_list.params.reverse();
-            par_list.params.push("self".to_string());
-            par_list.params.reverse();
+            fn_def.par_list.params.reverse();
+            fn_def.par_list.params.push("self".to_string());
+            fn_def.par_list.params.reverse();
         }
         // transfer function definition to assignment
+        let last_line = fn_def.last_line;
         return Ok(Stat::Assign(vec![fn_name], vec![fn_body], last_line));
     }
     unreachable!()
@@ -685,7 +691,7 @@ fn parse_fn_def_exp(lexer: &mut Lexer) -> Result<Exp> {
         });
     }
     let last_line = lexer.current_line();
-    Ok(Exp::FnDef(ParList::new(par_list, is_vararg), block, line, last_line))
+    Ok(Exp::FnDef(FnDef::new(ParList::new(par_list, is_vararg), block, line, last_line)))
 }
 
 fn parse_prefix_exp(lexer: &mut Lexer) -> Result<Exp> {
@@ -753,11 +759,7 @@ fn parse_parens_exp(lexer: &mut Lexer) -> Result<Exp> {
             _
         ) => Exp::Parens(Box::new(exp)),
 
-        exp @ Exp::FnCall(
-            _,
-            _,
-            _,
-        ) => Exp::Parens(Box::new(exp)),
+        exp @ Exp::FnCall(_) => Exp::Parens(Box::new(exp)),
 
         exp @ Exp::Name(_, _) => Exp::Parens(Box::new(exp)),
 
@@ -776,7 +778,7 @@ fn _parse_fn_call_exp(lexer: &mut Lexer, prefix_exp: Box<Exp>) -> Result<Exp> {
     // args
     let args = _parse_fn_call_args(lexer)?;
     let last_line = lexer.current_line();
-    Ok(Exp::FnCall(FnCall::new(prefix_exp, name_exp, args), line, last_line))
+    Ok(Exp::FnCall(FnCall::new(prefix_exp, name_exp, args, line, last_line)))
 }
 
 fn _parse_fn_name_exp(lexer: &mut Lexer) -> Result<Box<Exp>> {
