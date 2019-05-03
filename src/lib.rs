@@ -6,3 +6,5 @@ pub mod compiler;
 pub mod number;
 pub mod binary;
 pub mod vm;
+pub mod api;
+pub mod state;
