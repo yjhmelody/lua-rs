@@ -44,4 +44,11 @@ pub trait LuaAPI {
     fn push_integer(&mut self, n: i64);
     fn push_number(&mut self, n: f64);
     fn push_string(&mut self, s: String);
+
+    /* comparison and arithmetic functions */
+    fn arith(&mut self, op: u8);
+    fn compare(&self, idx1: isize, idx2: isize, op: u8) -> bool;
+    /* miscellaneous functions */
+    fn len(&mut self, idx: isize);
+    fn concat(&mut self, n: isize);
 }

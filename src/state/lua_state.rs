@@ -2,6 +2,7 @@ use crate::api::consts::*;
 use crate::api::LuaAPI;
 use crate::state::lua_stack::LuaStack;
 use crate::state::lua_value::LuaValue;
+use crate::state::ops;
 
 /// Lua State containing Lua Stack
 pub struct LuaState {
@@ -240,5 +241,70 @@ impl LuaAPI for LuaState {
     #[inline]
     fn push_string(&mut self, s: String) {
         self.stack.push(LuaValue::String(s));
+    }
+
+
+    /* comparison and arithmetic functions */
+
+    fn arith(&mut self, op: u8) {
+        if op != LUA_OPUNM && op != LUA_OPBNOT {
+            let b = self.stack.pop();
+            let a = self.stack.pop();
+            if let Some(result) = ops::arith(&a, &b, op) {
+                self.stack.push(result);
+                return;
+            }
+        } else {
+            let a = self.stack.pop();
+            if let Some(result) = ops::arith(&a, &a, op) {
+                self.stack.push(result);
+                return;
+            }
+        }
+        panic!("arithmetic error!");
+    }
+
+    fn compare(&self, idx1: isize, idx2: isize, op: u8) -> bool {
+        if !self.stack.is_valid(idx1) || !self.stack.is_valid(idx2) {
+            false
+        } else {
+            let a = self.stack.get(idx1);
+            let b = self.stack.get(idx2);
+            if let Some(result) = ops::compare(&a, &b, op) {
+                return result;
+            }
+            panic!("comparison error!")
+        }
+    }
+
+    /* miscellaneous functions */
+
+    fn len(&mut self, idx: isize) {
+        let val = self.stack.get(idx);
+        if let LuaValue::String(s) = val {
+            self.stack.push(LuaValue::Integer(s.len() as i64));
+        } else {
+            panic!("length error!")
+        }
+    }
+
+    fn concat(&mut self, n: isize) {
+        if n == 0 {
+            self.stack.push(LuaValue::String(String::new()))
+        } else if n >= 2 {
+            for _ in 1..n {
+                if self.is_string(-1) && self.is_string(-2) {
+                    let s2 = self.to_string(-1);
+                    let mut s1 = self.to_string(-2);
+                    s1.push_str(&s2);
+                    self.stack.pop();
+                    self.stack.pop();
+                    self.stack.push(LuaValue::String(s1));
+                } else {
+                    panic!("concatenation error!");
+                }
+            }
+        }
+        // n == 1, do nothing
     }
 }
