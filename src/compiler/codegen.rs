@@ -30,8 +30,8 @@ struct LocalVarInfo {
 /// Up Value Information
 #[derive(Debug, Copy, Clone)]
 struct UpValueInfo {
-    local_var_slot: usize,
-    up_value_index: usize,
+    local_var_slot: Option<usize>,
+    up_value_index: Option<usize>,
     /// The sequent of UpValue in Foreign Function
     index: usize,
 }
@@ -47,7 +47,7 @@ pub struct FnInfo {
     /// Block scope level
     scope_level: usize,
     /// Local variable of all scope
-    local_vars: Vec<HashMap<String, Option<Rc<LocalVarInfo>>>>,
+    local_vars: Vec<HashMap<String, Rc<LocalVarInfo>>>,
     /// Record some breaks statements
     breaks: Vec<Option<Vec<usize>>>,
     /// Parents' index
@@ -130,12 +130,12 @@ impl FnInfo {
     }
 
     #[inline]
-    fn get_current_scope(&self) -> &HashMap<String, Option<Rc<LocalVarInfo>>> {
+    fn get_current_scope(&self) -> &HashMap<String, Rc<LocalVarInfo>> {
         &self.local_vars[self.scope_level]
     }
 
     #[inline]
-    fn get_current_scope_mut(&mut self) -> &mut HashMap<String, Option<Rc<LocalVarInfo>>> {
+    fn get_current_scope_mut(&mut self) -> &mut HashMap<String, Rc<LocalVarInfo>> {
         &mut self.local_vars[self.scope_level]
     }
 
@@ -166,18 +166,13 @@ impl FnInfo {
         let mut has_captured_local_var = false;
         let mut min_local_var_slot = self.max_regs;
         let local_vars = self.get_current_scope_mut();
-        local_vars.clone().iter().for_each(|(k, v)| {
-            match v {
-                Some(local_var) => {
-                    if local_var.is_captured {
-                        has_captured_local_var = true;
-                    }
-                    // todo: fix it
-                    if local_var.slot < min_local_var_slot {
-                        min_local_var_slot = local_var.slot;
-                    }
-                }
-                _ => {}
+        local_vars.clone().iter().for_each(|(k, local_var)| {
+            if local_var.is_captured {
+                has_captured_local_var = true;
+            }
+            // todo: fix it
+            if local_var.slot < min_local_var_slot {
+                min_local_var_slot = local_var.slot;
             }
         });
 
@@ -197,24 +192,23 @@ impl FnInfo {
         });
 
         let slot = new_var.slot;
-        self.local_vars[self.scope_level].insert(name, Some(new_var));
+        self.local_vars[self.scope_level].insert(name, new_var);
         Ok(slot)
     }
 
     /// Get name's register number
     fn local_var_slot(&self, name: &String) -> Result<usize> {
         match self.get_current_scope().get(name) {
-            Some(Some(local_var)) => Ok(local_var.slot),
-            Some(None) => Ok(0),
+            Some(local_var) => Ok(local_var.slot),
             _ => Err(Error::IllegalRegister),
         }
     }
 
     /// Remove a variable from current scope
     #[inline]
-    fn remove_local_var(&mut self, name: String) {
+    fn remove_local_var(&mut self, name: &String) {
         self.free_register();
-        self.get_current_scope_mut().insert(name, None);
+        self.get_current_scope_mut().remove(name);
     }
 
     /// Create a jump instruction to a latest loop block
@@ -234,15 +228,12 @@ impl FnInfo {
 
     /// Get up value's index
     fn up_value_index(&mut self, name: &String) -> Result<usize> {
-        match self.up_values.get(name) {
-            Some(up_value) => {
-                return Ok(up_value.index);
-            }
-            _ => {}
+        // todo: refactor scope lookup
+        if let Some(up_value) = self.up_values.get(name) {
+            Ok(up_value.index)
+        } else {
+            unimplemented!()
         }
-
-        // 325
-        unimplemented!()
     }
 
     fn close_open_up_values(&mut self, line: Line) {
@@ -259,119 +250,6 @@ impl FnInfo {
 }
 
 /********************** emit bytecode ************************/
-
-/********************** statement code generation ************************/
-
-impl FnInfo {
-    fn codegen_block(&mut self, block: &Block) -> Result<()> {
-        for stat in &block.stats {
-            self.codegen_stat(stat);
-        }
-        self.codegen_ret_stat(&block.ret_exps, block.last_line)
-    }
-
-    fn codegen_stat(&mut self, stat: &Stat) -> Result<()> {
-        match stat {
-            Stat::FnCall(fn_call) => self.codegen_fn_call_stat(fn_call),
-            Stat::Break(line) => self.codegen_break_stat(*line),
-            Stat::Do(block) => self.codegen_do_stat(&*block),
-            Stat::Repeat(exp, block) => self.codegen_repeat_stat(exp, &*block),
-            Stat::While(exp, block) => self.codegen_while_stat(exp, &*block),
-            Stat::Condition(exps, blocks) => self.codegen_condition_stat(exps, blocks),
-            Stat::ForNum(for_num) => self.codegen_for_num_stat(&*for_num),
-            Stat::ForIn(for_in, line) => self.codegen_for_in_stat(&*for_in, *line),
-            Stat::Assign(names, vals, line) => self.codegen_assign_stat(names, vals, *line),
-            Stat::LocalVarDecl(names, exps, line) => self.codegen_local_var_decl_stat(names, exps, *line),
-            Stat::LocalFnDef(name, fn_def) => self.codegen_local_fn_def_stat(name, fn_def),
-
-            _ => { panic!("label and goto statements are not supported!"); }
-        }
-    }
-
-    fn codegen_ret_stat(&mut self, exps: &Vec<Exp>, last_line: Line) -> Result<()> {
-        if exps.is_empty() {
-            self.emit_return(last_line, 0, 0);
-            Ok(())
-        } else {
-            let is_mult_ret = is_vararg_or_fn_call(exps.last().unwrap());
-            let num = exps.len() - 1;
-            for (i, exp) in exps.clone().iter().enumerate() {
-                let reg = self.alloc_register()? as isize;
-                // has `...` or function call
-                if i == num && is_mult_ret {
-                    self.codegen_exp(exp, reg, -1);
-                } else {
-                    self.codegen_exp(exp, reg, 1);
-                }
-            }
-            self.free_registers(num);
-            let a = self.used_regs;
-            if is_mult_ret {
-                self.emit_return(last_line, a as isize, -1);
-            } else {
-                self.emit_return(last_line, a as isize, num as isize);
-            }
-
-            Ok(())
-        }
-    }
-
-    // local function f() end => local f; f = function() end
-    fn codegen_local_fn_def_stat(&mut self, name: &String, fn_def: &FnDef) -> Result<()> {
-        let reg = self.add_local_var(name.clone())?;
-        unimplemented!()
-    }
-
-    fn codegen_fn_call_stat(&mut self, fn_call: &FnCall) -> Result<()> {
-        unimplemented!()
-    }
-
-    fn codegen_break_stat(&mut self, line: Line) -> Result<()> {
-        let pc = self.emit_jump(line, 0, 0);
-        self.add_break_jump(pc)
-    }
-
-    fn codegen_do_stat(&mut self, block: &Block) -> Result<()> {
-        // not a loop block
-        self.enter_scope(false);
-        self.codegen_block(block)?;
-        self.close_open_up_values(block.last_line);
-        self.exit_scope()
-    }
-
-    fn codegen_repeat_stat(&mut self, exp: &Exp, block: &Block) -> Result<()> {
-        unimplemented!()
-    }
-
-    fn codegen_while_stat(&mut self, exp: &Exp, block: &Block) -> Result<()> {
-        let pc_before_exp = self.pc();
-        let reg = self.alloc_register();
-        unimplemented!()
-    }
-
-    fn codegen_condition_stat(&mut self, exp: &Vec<Exp>, block: &Vec<Block>) -> Result<()> {
-        unimplemented!()
-    }
-
-    fn codegen_for_num_stat(&mut self, for_num: &ForNum) -> Result<()> {
-        unimplemented!()
-    }
-
-    fn codegen_for_in_stat(&mut self, for_in: &ForIn, line: Line) -> Result<()> {
-        unimplemented!()
-    }
-
-    fn codegen_assign_stat(&mut self, names: &Vec<Exp>, vals: &Vec<Exp>, line: Line) -> Result<()> {
-        unimplemented!()
-    }
-
-    fn codegen_local_var_decl_stat(&mut self, names: &Vec<String>, exps: &Vec<Exp>, line: Line) -> Result<()> {
-        unimplemented!()
-    }
-}
-
-/********************** expression code generation ***********************/
-
 impl FnInfo {
     #[inline]
     fn emit_ABC(&mut self, line: Line, opcode: u8, a: isize, b: isize, c: isize) {
@@ -617,6 +495,143 @@ impl FnInfo {
         unimplemented!()
     }
 }
+
+/********************** statement code generation ************************/
+
+impl FnInfo {
+    fn codegen_block(&mut self, block: &Block) -> Result<()> {
+        for stat in &block.stats {
+            self.codegen_stat(stat);
+        }
+        self.codegen_ret_stat(&block.ret_exps, block.last_line)
+    }
+
+    fn codegen_stat(&mut self, stat: &Stat) -> Result<()> {
+        match stat {
+            Stat::FnCall(fn_call) => self.codegen_fn_call_stat(fn_call),
+            Stat::Break(line) => self.codegen_break_stat(*line),
+            Stat::Do(block) => self.codegen_do_stat(&*block),
+            Stat::Repeat(exp, block) => self.codegen_repeat_stat(exp, &*block),
+            Stat::While(exp, block) => self.codegen_while_stat(exp, &*block),
+            Stat::Condition(exps, blocks) => self.codegen_condition_stat(exps, blocks),
+            Stat::ForNum(for_num) => self.codegen_for_num_stat(&*for_num),
+            Stat::ForIn(for_in, line) => self.codegen_for_in_stat(&*for_in, *line),
+            Stat::Assign(names, vals, line) => self.codegen_assign_stat(names, vals, *line),
+            Stat::LocalVarDecl(names, exps, line) => self.codegen_local_var_decl_stat(names, exps, *line),
+            Stat::LocalFnDef(name, fn_def) => self.codegen_local_fn_def_stat(name, fn_def),
+
+            _ => { panic!("label and goto statements are not supported!"); }
+        }
+    }
+
+    fn codegen_ret_stat(&mut self, exps: &Vec<Exp>, last_line: Line) -> Result<()> {
+        if exps.is_empty() {
+            self.emit_return(last_line, 0, 0);
+            Ok(())
+        } else {
+            let is_mult_ret = is_vararg_or_fn_call(exps.last().unwrap());
+            let num = exps.len() - 1;
+            for (i, exp) in exps.clone().iter().enumerate() {
+                let reg = self.alloc_register()? as isize;
+                // has `...` or function call
+                if i == num && is_mult_ret {
+                    self.codegen_exp(exp, reg, -1);
+                } else {
+                    self.codegen_exp(exp, reg, 1);
+                }
+            }
+            self.free_registers(num);
+            let a = self.used_regs;
+            if is_mult_ret {
+                self.emit_return(last_line, a as isize, -1);
+            } else {
+                self.emit_return(last_line, a as isize, num as isize);
+            }
+
+            Ok(())
+        }
+    }
+
+    // local function f() end => local f; f = function() end
+    fn codegen_local_fn_def_stat(&mut self, name: &String, fn_def: &FnDef) -> Result<()> {
+        let reg = self.add_local_var(name.clone())?;
+        unimplemented!()
+    }
+
+    fn codegen_fn_call_stat(&mut self, fn_call: &FnCall) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_break_stat(&mut self, line: Line) -> Result<()> {
+        let pc = self.emit_jump(line, 0, 0);
+        self.add_break_jump(pc)
+    }
+
+    fn codegen_do_stat(&mut self, block: &Block) -> Result<()> {
+        // not a loop block
+        self.enter_scope(false);
+        self.codegen_block(block)?;
+        self.close_open_up_values(block.last_line);
+        self.exit_scope()
+    }
+
+
+    /*
+            ______________
+           |  false? jmp  |
+           V              /
+    repeat block until exp
+    */
+    fn codegen_repeat_stat(&mut self, exp: &Exp, block: &Block) -> Result<()> {
+        unimplemented!()
+    }
+
+    /*
+               ______________
+              /  false? jmp  |
+             /               |
+    while exp do block end <-'
+          ^           \
+          |___________/
+               jmp
+    */
+    fn codegen_while_stat(&mut self, exp: &Exp, block: &Block) -> Result<()> {
+        let pc_before_exp = self.pc();
+        let reg = self.alloc_register();
+        unimplemented!()
+    }
+
+    /*
+             _________________       _________________       _____________
+            / false? jmp      |     / false? jmp      |     / false? jmp  |
+           /                  V    /                  V    /              V
+    if exp1 then block1 elseif exp2 then block2 elseif true then block3 end <-.
+                       \                       \                       \      |
+                        \_______________________\_______________________\_____|
+                        jmp                     jmp                     jmp
+    */
+    fn codegen_condition_stat(&mut self, exp: &Vec<Exp>, block: &Vec<Block>) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_for_num_stat(&mut self, for_num: &ForNum) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_for_in_stat(&mut self, for_in: &ForIn, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_assign_stat(&mut self, names: &Vec<Exp>, vals: &Vec<Exp>, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+
+    fn codegen_local_var_decl_stat(&mut self, names: &Vec<String>, exps: &Vec<Exp>, line: Line) -> Result<()> {
+        unimplemented!()
+    }
+}
+
+/********************** expression code generation ***********************/
 
 impl FnInfo {
     fn codegen_exp(&mut self, exp: &Exp, a: isize, n: isize) {
