@@ -178,11 +178,20 @@ pub struct ParList {
     pub is_vararg: bool,
 }
 
+impl Default for ParList {
+    fn default() -> Self {
+        Self {
+            params: Vec::new(),
+            is_vararg: true,
+        }
+    }
+}
+
 impl ParList {
     pub fn new(params: Vec<String>, is_vararg: bool) -> Self {
         Self {
-            is_vararg,
             params,
+            is_vararg,
         }
     }
 

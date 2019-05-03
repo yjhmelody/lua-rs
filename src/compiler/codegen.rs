@@ -20,6 +20,16 @@ const MAXARG_BX: isize = (1 << 18) - 1;
 /// 131071
 const MAXARG_SBX: isize = MAXARG_BX >> 1;
 
+
+pub fn gen_prototype(block: Box<Block>) -> Rc<Prototype> {
+    let last_line = block.last_line;
+    let fn_def = FnDef::new(ParList::default(), block, 0, last_line);
+    let mut fn_info = FnInfo::new(None, ParList::default(), 0, last_line);
+    fn_info.add_local_var("_ENV".to_string());
+    fn_info.codegen_fn_def_exp(&fn_def, 0);
+    fn_info.to_prototype()
+}
+
 /// Local Variable Information
 #[derive(Debug)]
 struct LocalVarInfo {
@@ -74,7 +84,7 @@ pub struct FnInfo {
 impl FnInfo {
     /// Create a FnInfo structure
     #[inline]
-    fn new(parent: Option<Rc<RefCell<FnInfo>>>, par_list: ParList, block: Box<Block>, line: Line, last_line: Line) -> Self {
+    fn new(parent: Option<Rc<RefCell<FnInfo>>>, par_list: ParList, line: Line, last_line: Line) -> Self {
         let is_vararg = par_list.is_vararg;
         let num_params = par_list.params.len();
         Self {
@@ -709,7 +719,7 @@ impl FnInfo {
             Exp::Concat(exps, line) => { self.codegen_concat_exp(exps, a, n, *line); }
             Exp::TableConstructor(fields, line) => { self.codegen_table_constructor_exp(fields, a, n, *line); }
             Exp::TableAccess(obj, key, line) => { self.codegen_table_access_exp(&*obj, &*key, a, n, *line); }
-            Exp::FnDef(fn_def) => { self.codegen_fn_def_exp(fn_def, a, n); }
+            Exp::FnDef(fn_def) => { self.codegen_fn_def_exp(fn_def, a); }
             Exp::FnCall(fn_call) => { self.codegen_fn_call_exp(fn_call, a, n); }
         }
     }
@@ -718,7 +728,7 @@ impl FnInfo {
         unimplemented!()
     }
 
-    fn codegen_fn_def_exp(&mut self, fn_def: &FnDef, a: isize, n: isize) -> Result<()> {
+    fn codegen_fn_def_exp(&mut self, fn_def: &FnDef, a: isize) -> Result<()> {
         unimplemented!()
     }
 

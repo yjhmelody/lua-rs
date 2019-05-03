@@ -187,11 +187,11 @@ pub const OPCODES: &'static [OpCode] = &[
     opcode(OpArgMask::U, OpArgMask::U, OpMode::Ax, "EXTRAARG"),
 ];
 
-const fn opcode(bmode: OpArgMask, cmode: OpArgMask, opmode: OpMode, name: &'static str) -> OpCode {
+const fn opcode(b_mode: OpArgMask, c_mode: OpArgMask, op_mode: OpMode, name: &'static str) -> OpCode {
     OpCode {
-        bmode,
-        cmode,
-        opmode,
+        b_mode,
+        c_mode,
+        op_mode,
         name,
     }
 }
@@ -199,11 +199,11 @@ const fn opcode(bmode: OpArgMask, cmode: OpArgMask, opmode: OpMode, name: &'stat
 /// Lua Instruction, 32 bits
 pub struct OpCode {
     /// B arg mode
-    pub bmode: OpArgMask,
+    pub b_mode: OpArgMask,
     /// C arg mode
-    pub cmode: OpArgMask,
+    pub c_mode: OpArgMask,
     /// op mode
-    pub opmode: OpMode,
+    pub op_mode: OpMode,
     /// Op code's name
     pub name: &'static str,
 }
