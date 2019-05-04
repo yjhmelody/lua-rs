@@ -172,7 +172,7 @@ impl FnCall {
 }
 
 /// Function parameters
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParList {
     pub params: Vec<String>,
     pub is_vararg: bool,

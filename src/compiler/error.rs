@@ -51,6 +51,8 @@ pub enum Error {
     NoLoop,
     /// Not a UpValue
     NotUpValue,
+    /// Not a vararg function
+    NotVararg,
 }
 
 /// Wrapped for parsing time errors

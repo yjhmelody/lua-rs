@@ -3,9 +3,10 @@
 #![allow(unused_mut)]
 #![allow(non_snake_case)]
 
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::iter;
+use std::process::id;
 use std::rc::Rc;
 
 use crate::binary::chunk::*;
@@ -21,14 +22,14 @@ const MAXARG_BX: isize = (1 << 18) - 1;
 const MAXARG_SBX: isize = MAXARG_BX >> 1;
 
 
-pub fn gen_prototype(block: Box<Block>) -> Rc<Prototype> {
-    let last_line = block.last_line;
-    let fn_def = FnDef::new(ParList::default(), block, 0, last_line);
-    let mut fn_info = FnInfo::new(None, ParList::default(), 0, last_line);
-    fn_info.add_local_var("_ENV".to_string());
-    fn_info.codegen_fn_def_exp(&fn_def, 0);
-    fn_info.to_prototype()
-}
+//pub fn gen_prototype(block: Box<Block>) -> Rc<Prototype> {
+//    let last_line = block.last_line;
+//    let fn_def = FnDef::new(ParList::default(), block, 0, last_line);
+//    let mut fn_info = FnInfo::new(None, ParList::default(), 0, last_line);
+//    fn_info.add_local_var("_ENV".to_string());
+//    fn_info.codegen_fn_def_exp(&fn_def, 0);
+//    fn_info.to_prototype()
+//}
 
 /// Local Variable Information
 #[derive(Debug)]
@@ -49,7 +50,7 @@ struct UpValueInfo {
 
 /// Function Information Table for Lua
 #[derive(Debug)]
-pub struct FnInfo {
+struct FnInfo {
     constants: HashMap<Constant, usize>,
     /// Num of used regs
     used_regs: usize,
@@ -62,13 +63,15 @@ pub struct FnInfo {
     /// Record some breaks statements
     breaks: Vec<Option<Vec<usize>>>,
     /// Parents' index
-    parent: Option<Rc<RefCell<FnInfo>>>,
+    parent_index: usize,
+    /// 当前节点的索引
+    current_index: usize,
     /// UpValues
     up_values: HashMap<String, UpValueInfo>,
     /// Store Lua instructions
     instructions: Vec<u32>,
     /// Nested Functions
-    sub_fns: Vec<Rc<FnInfo>>,
+    sub_fns: Vec<Rc<RefCell<FnInfo>>>,
     /// The function's param num
     num_params: usize,
     /// Has `...`
@@ -79,12 +82,22 @@ pub struct FnInfo {
     last_line: Line,
 }
 
+
+static mut counter: usize = 0;
+
+fn count() -> usize {
+    unsafe {
+        counter += 1;
+        counter
+    }
+}
+
 /********************** keep function information ************************/
 
 impl FnInfo {
     /// Create a FnInfo structure
     #[inline]
-    fn new(parent: Option<Rc<RefCell<FnInfo>>>, par_list: ParList, line: Line, last_line: Line) -> Self {
+    fn new(parent_index: usize, current_index: usize, par_list: ParList, line: Line, last_line: Line) -> Self {
         let is_vararg = par_list.is_vararg;
         let num_params = par_list.params.len();
         Self {
@@ -94,7 +107,8 @@ impl FnInfo {
             scope_level: 0,
             local_vars: Vec::new(),
             breaks: Vec::new(),
-            parent,
+            parent_index,
+            current_index,
             up_values: HashMap::new(),
             instructions: Vec::new(),
             sub_fns: Vec::new(),
@@ -103,6 +117,17 @@ impl FnInfo {
             line_nums: Vec::new(),
             line,
             last_line,
+        }
+    }
+
+    fn find_fn_info_by_index(fn_info: Rc<RefCell<FnInfo>>, index: usize) -> Option<Rc<RefCell<FnInfo>>> {
+        if fn_info.borrow().current_index == index {
+            Some(fn_info)
+        } else {
+            for sub_fn in fn_info.borrow().sub_fns.iter() {
+                return Self::find_fn_info_by_index(sub_fn.clone(), index);
+            }
+            None
         }
     }
 
@@ -280,9 +305,9 @@ impl FnInfo {
         })
     }
 
-    fn to_prototypes(sub_fns: &Vec<Rc<FnInfo>>) -> Vec<Rc<Prototype>> {
+    fn to_prototypes(sub_fns: &Vec<Rc<RefCell<FnInfo>>>) -> Vec<Rc<Prototype>> {
         sub_fns.iter().map(|sub_fn| {
-            sub_fn.clone().to_prototype()
+            sub_fn.borrow().to_prototype()
         }).collect()
     }
 
@@ -626,11 +651,14 @@ impl FnInfo {
     // local function f() end => local f; f = function() end
     fn codegen_local_fn_def_stat(&mut self, name: &String, fn_def: &FnDef) -> Result<()> {
         let reg = self.add_local_var(name.clone())?;
-        unimplemented!()
+        self.codegen_fn_def_exp(fn_def, reg as isize)
     }
 
     fn codegen_fn_call_stat(&mut self, fn_call: &FnCall) -> Result<()> {
-        unimplemented!()
+        let reg = self.alloc_register()?;
+        self.codegen_fn_call_exp(fn_call, reg as isize, 0)?;
+        self.free_register();
+        Ok(())
     }
 
     fn codegen_break_stat(&mut self, line: Line) -> Result<()> {
@@ -799,6 +827,22 @@ impl FnInfo {
     }
 
     fn codegen_assign_stat(&mut self, names: &Vec<Exp>, vals: &Vec<Exp>, line: Line) -> Result<()> {
+        let old_regs = self.used_regs;
+        let mut tbl_regs = iter::repeat(isize::default()).take(names.len()).collect::<Vec<_>>();
+        let mut k_regs = iter::repeat(isize::default()).take(names.len()).collect::<Vec<_>>();
+        let mut v_regs = iter::repeat(isize::default()).take(names.len()).collect::<Vec<_>>();
+
+        for (i, name_exp) in names.iter().enumerate() {
+            if let Exp::TableAccess(prefix_exp, key_exp, line) = name_exp {
+                tbl_regs[i] = self.alloc_register()? as isize;
+                self.codegen_exp(&*prefix_exp, tbl_regs[i], 1);
+                k_regs[i] = self.alloc_register()? as isize;
+                self.codegen_exp(&*key_exp, k_regs[i], 1);
+            } else {
+                unimplemented!()
+            }
+        }
+
         unimplemented!()
     }
 
@@ -846,6 +890,7 @@ impl FnInfo {
 
         Ok(())
     }
+
     fn codegen_local_var_decl_stat_borrow(&mut self, names: &Vec<String>, exps: &Vec<&Exp>) -> Result<()> {
         unimplemented!()
     }
@@ -879,12 +924,32 @@ impl FnInfo {
         unimplemented!()
     }
 
+    // f[a] := function(args) body end
     fn codegen_fn_def_exp(&mut self, fn_def: &FnDef, a: isize) -> Result<()> {
-        unimplemented!()
+        let sub_fn = Self::new(self.current_index, count(), fn_def.par_list.clone(), fn_def.line, fn_def.last_line);
+        let mut sub_fn = Rc::new(RefCell::new(sub_fn));
+        self.sub_fns.push(sub_fn.clone());
+
+        for param in &fn_def.par_list.params {
+            sub_fn.borrow_mut().add_local_var(param.clone())?;
+        }
+
+        self.codegen_block(&*fn_def.block);
+        sub_fn.borrow_mut().exit_scope()?;
+        sub_fn.borrow_mut().emit_return(fn_def.block.last_line, 0, 0);
+
+        let bx = self.sub_fns.len() - 1;
+        self.emit_closure(fn_def.block.last_line, a, bx as isize);
+        Ok(())
     }
 
     fn codegen_vararg_exp(&mut self, a: isize, n: isize, line: Line) -> Result<()> {
-        unimplemented!()
+        if !self.is_vararg {
+            Err(Error::NotVararg)
+        } else {
+            self.emit_vararg(line, a, n);
+            Ok(())
+        }
     }
 
     fn codegen_unop_exp(&mut self, op: &Token, exp: &Exp, a: isize, n: isize, line: Line) -> Result<()> {
