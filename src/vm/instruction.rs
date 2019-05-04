@@ -8,7 +8,7 @@ const MAXARG_SBX: isize = MAXARG_BX >> 1;
 /// Instruction decode
 pub trait Instruction {
     fn opname(self) -> &'static str;
-    fn opmode(self) -> OpMode;
+    fn op_mode(self) -> OpMode;
     fn b_mode(self) -> OpArgMask;
     fn c_mode(self) -> OpArgMask;
     fn opcode(self) -> u8;
@@ -23,7 +23,7 @@ impl Instruction for u32 {
         OPCODES[self.opcode() as usize].name
     }
 
-    fn opmode(self) -> OpMode {
+    fn op_mode(self) -> OpMode {
         OPCODES[self.opcode() as usize].op_mode
     }
 

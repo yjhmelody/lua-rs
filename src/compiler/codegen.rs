@@ -157,7 +157,7 @@ impl FnInfo {
         &mut self.local_vars[self.scope_level]
     }
 
-    /// Create a new scope for vars
+    /// Create a new scope for vars, true for breakable
     #[inline]
     fn enter_scope(&mut self, breakable: bool) {
         self.scope_level += 1;
@@ -255,6 +255,7 @@ impl FnInfo {
     }
 
     fn close_open_up_values(&mut self, line: Line) {
+        // todo: understand
         let a = self.get_jump_arg_a();
         if a > 0 {
             self.emit_jump(line, a, 0);
@@ -492,7 +493,7 @@ impl FnInfo {
     // r(a+3), ... ,r(a+2+c) := r(a)(r(a+1), r(a+2));
     #[inline]
     fn emit_t_for_call(&mut self, line: Line, a: isize, c: isize) {
-        // todo
+        // todo: understand it
         self.emit_ABC(line, opcode::OP_TFORCALL, a, 0, c);
     }
 
@@ -554,6 +555,7 @@ impl FnInfo {
         self.instructions.len() - 1
     }
 
+    // fix sbx for one instruction
     fn fix_sbx(&mut self, pc: usize, sBx: isize) {
         let mut ins = self.instructions[pc];
         // clear sBx Op
@@ -652,7 +654,21 @@ impl FnInfo {
     repeat block until exp
     */
     fn codegen_repeat_stat(&mut self, exp: &Exp, block: &Block) -> Result<()> {
-        unimplemented!()
+        self.enter_scope(true);
+
+        let pc_before_block = self.pc();
+        self.codegen_block(block)?;
+
+        let reg = self.alloc_register()?;
+        self.codegen_exp(exp, reg as isize, 1);
+        self.free_register();
+
+        self.emit_test(block.last_line, reg as isize, 0);
+        let a = self.get_jump_arg_a();
+        self.emit_jump(block.last_line, a, (pc_before_block - self.pc() - 1) as isize);
+        self.close_open_up_values(block.last_line);
+
+        self.exit_scope()
     }
 
     /*
@@ -666,8 +682,23 @@ impl FnInfo {
     */
     fn codegen_while_stat(&mut self, exp: &Exp, block: &Block) -> Result<()> {
         let pc_before_exp = self.pc();
-        let reg = self.alloc_register();
-        unimplemented!()
+
+        let reg = self.alloc_register()?;
+        self.codegen_exp(exp, reg as isize, 1);
+        self.free_register();
+
+        self.emit_test(block.last_line, reg as isize, 0);
+        let pc_jmp_to_end = self.emit_jump(block.last_line, 0, 0);
+
+        self.enter_scope(true);
+        self.codegen_block(block)?;
+        self.close_open_up_values(block.last_line);
+        self.emit_jump(block.last_line, 0, (pc_before_exp - self.pc() - 1) as isize);
+        self.exit_scope()?;
+
+        self.fix_sbx(pc_jmp_to_end, (self.pc() - pc_jmp_to_end) as isize);
+
+        Ok(())
     }
 
     /*
@@ -679,23 +710,143 @@ impl FnInfo {
                         \_______________________\_______________________\_____|
                         jmp                     jmp                     jmp
     */
-    fn codegen_condition_stat(&mut self, exp: &Vec<Exp>, block: &Vec<Block>) -> Result<()> {
-        unimplemented!()
+    fn codegen_condition_stat(&mut self, exps: &Vec<Exp>, blocks: &Vec<Block>) -> Result<()> {
+        let mut pc_jmp_to_ends = vec![];
+        let mut pc_jmp_to_next_exp: isize = -1;
+
+        for (i, exp) in exps.iter().enumerate() {
+            if pc_jmp_to_next_exp >= 0 {
+                self.fix_sbx(pc_jmp_to_next_exp as usize, self.pc() as isize - pc_jmp_to_next_exp as isize);
+            }
+
+            let reg = self.alloc_register()?;
+            self.codegen_exp(exp, reg as isize, 1);
+            self.free_register();
+
+            self.emit_test(0, 0, 0);
+            pc_jmp_to_next_exp = self.emit_jump(0, 0, 0) as isize;
+
+            let block = &blocks[i];
+            self.enter_scope(false);
+            self.codegen_block(block);
+            self.close_open_up_values(block.last_line);
+            self.exit_scope()?;
+
+            if i < exps.len() - 1 {
+                pc_jmp_to_ends.push(self.emit_jump(block.last_line, 0, 0));
+            } else {
+                pc_jmp_to_ends.push(pc_jmp_to_next_exp as usize);
+            }
+        }
+
+        for pc in pc_jmp_to_ends {
+            self.fix_sbx(pc, self.pc() as isize - pc as isize);
+        }
+
+        Ok(())
     }
 
     fn codegen_for_num_stat(&mut self, for_num: &ForNum) -> Result<()> {
-        unimplemented!()
+        // need OP_FORPREP and OP_FORLOOP
+        self.enter_scope(true);
+
+        let names = vec![
+            "(for index)".to_string(),
+            "(for limit)".to_string(),
+            "(for step)".to_string(),
+        ];
+        self.codegen_local_var_decl_stat_borrow(&names, &vec![&for_num.init, &for_num.limit, &for_num.step]);
+        self.add_local_var(for_num.name.clone())?;
+
+
+        let a = self.used_regs as isize - 4;
+        let pc_for_prep = self.emit_for_prep(for_num.line_of_do, a, 0);
+        self.codegen_block(&*for_num.block);
+        self.close_open_up_values(for_num.block.last_line);
+        let pc_for_loop = self.emit_for_loop(for_num.line_of_for, a, 0);
+
+
+        self.fix_sbx(pc_for_prep as usize, pc_for_loop - pc_for_prep - 1);
+        self.fix_sbx(pc_for_loop as usize, pc_for_prep - pc_for_loop);
+
+        self.exit_scope()
     }
 
     fn codegen_for_in_stat(&mut self, for_in: &ForIn, line: Line) -> Result<()> {
-        unimplemented!()
+        self.enter_scope(true);
+
+        let names = vec![
+            "(for index)".to_string(),
+            "(for limit)".to_string(),
+            "(for step)".to_string(),
+        ];
+        self.codegen_local_var_decl_stat(&names, &for_in.exp_list, line)?;
+
+        for name in for_in.name_list.iter() {
+            self.add_local_var(name.clone())?;
+        }
+
+        let pc_jmp_to_tfc = self.emit_jump(line, 0, 0);
+        self.codegen_block(&*for_in.block)?;
+        self.close_open_up_values(for_in.block.last_line);
+        self.fix_sbx(pc_jmp_to_tfc, self.pc() as isize - pc_jmp_to_tfc as isize);
+
+        let reg_gen = self.local_var_slot(&"(for generator)".to_string())?;
+        self.emit_t_for_call(line, reg_gen as isize, for_in.name_list.len() as isize);
+        self.emit_t_for_loop(line, reg_gen as isize + 2, pc_jmp_to_tfc as isize - self.pc() as isize - 1);
+
+        self.exit_scope()
     }
 
     fn codegen_assign_stat(&mut self, names: &Vec<Exp>, vals: &Vec<Exp>, line: Line) -> Result<()> {
         unimplemented!()
     }
 
-    fn codegen_local_var_decl_stat(&mut self, names: &Vec<String>, exps: &Vec<Exp>, line: Line) -> Result<()> {
+    fn codegen_local_var_decl_stat(&mut self, names: &Vec<String>, exps: &Vec<Exp>, last_line: Line) -> Result<()> {
+        let old_regs = self.used_regs;
+        if exps.len() == names.len() {
+            for exp in exps.iter() {
+                let a = self.alloc_register()?;
+                self.codegen_exp(exp, a as isize, 1);
+            }
+        } else if exps.len() > names.len() {
+            for (i, exp) in exps.iter().enumerate() {
+                let a = self.alloc_register()?;
+                if i == exps.len() - 1 && is_vararg_or_fn_call(exp) {
+                    self.codegen_exp(exp, a as isize, 0);
+                } else {
+                    self.codegen_exp(exp, a as isize, 1);
+                }
+            }
+        } else {
+            let mut mult_ret = false;
+            for (i, exp) in exps.iter().enumerate() {
+                let a = self.alloc_register()?;
+                if i == exps.len() - 1 && is_vararg_or_fn_call(exp) {
+                    mult_ret = true;
+                    let n = names.len() - exps.len() + 1;
+                    self.codegen_exp(exp, a as isize, n as isize);
+                    self.alloc_registers(n - 1);
+                } else {
+                    self.codegen_exp(exp, a as isize, 1);
+                }
+            }
+
+            if !mult_ret {
+                let n = names.len() - exps.len();
+                let a = self.alloc_registers(n)?;
+                self.emit_load_nil(last_line, a as isize, n as isize);
+            }
+
+            self.used_regs = old_regs;
+            for name in names {
+                self.add_local_var(name.clone())?;
+            }
+        }
+
+        Ok(())
+    }
+    fn codegen_local_var_decl_stat_borrow(&mut self, names: &Vec<String>, exps: &Vec<&Exp>) -> Result<()> {
         unimplemented!()
     }
 }
