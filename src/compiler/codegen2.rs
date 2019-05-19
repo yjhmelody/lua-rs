@@ -928,7 +928,7 @@ impl FnInfo {
             Exp::Name(name, line) => { self.codegen_name_exp(name, a, n, *line); }
             Exp::Parens(exp) => self.codegen_exp(&*exp, a, n),
             Exp::Vararg(line) => { self.codegen_vararg_exp(a, n, *line); }
-            Exp::Unop(op, exp, line) => {}
+            Exp::Unop(op, exp, line) => { self.codegen_unop_exp(op, exp, a, *line); }
             Exp::Binop(exp1, op, exp2, line) => { self.codegen_binop_exp(&*exp1, op, &*exp2, a, n, *line); }
             Exp::Concat(exps, line) => { self.codegen_concat_exp(exps, a, n, *line); }
             Exp::TableConstructor(fields, line) => { self.codegen_table_constructor_exp(fields, a, n, *line); }
@@ -939,7 +939,17 @@ impl FnInfo {
     }
 
     fn codegen_name_exp(&mut self, name: &String, a: isize, n: isize, line: Line) -> Result<()> {
-        unimplemented!()
+        let reg = self.local_var_slot(name);
+        if let Ok(reg) = reg {
+            self.emit_move(line, a, reg as isize);
+            Ok(())
+        } else if let Ok(idx) = self.up_value_index(name) {
+            self.emit_get_up_value(line, a, idx as isize);
+            Ok(())
+        } else {
+            // x => _Env['x']
+            self.codegen_table_access_exp(&Exp::Name("_ENV".to_string(), 0), &Exp::String(name.clone(), 0), a, 0, line)
+        }
     }
 
     // f[a] := function(args) body end
@@ -970,8 +980,12 @@ impl FnInfo {
         }
     }
 
-    fn codegen_unop_exp(&mut self, op: &Token, exp: &Exp, a: isize, n: isize, line: Line) -> Result<()> {
-        unimplemented!()
+    fn codegen_unop_exp(&mut self, op: &Token, exp: &Exp, a: isize, line: Line) -> Result<()> {
+        let b = self.alloc_register()? as isize;
+        self.codegen_exp(exp, b, 1);
+        self.emit_unary_op(line, op, a, b);
+        self.free_register();
+        Ok(())
     }
 
     fn codegen_binop_exp(&mut self, exp1: &Exp, op: &Token, exp2: &Exp, a: isize, n: isize, line: Line) -> Result<()> {
@@ -979,7 +993,17 @@ impl FnInfo {
     }
 
     fn codegen_concat_exp(&mut self, exps: &Vec<Exp>, a: isize, n: isize, line: Line) -> Result<()> {
-        unimplemented!()
+        for exp in exps {
+            let a = self.alloc_register()? as isize;
+            self.codegen_exp(exp, a, 1);
+        }
+
+        let c = self.used_regs - 1;
+        let b = c - exps.len() + 1;
+        self.free_registers(c + 1 - b);
+        self.emit_ABC(line, opcode::OP_CONCAT, a, b as isize, c as isize);
+        Ok(())
+
     }
 
     fn codegen_table_constructor_exp(&mut self, fields: &Vec<Field>, a: isize, n: isize, line: Line) -> Result<()> {
@@ -987,7 +1011,13 @@ impl FnInfo {
     }
 
     fn codegen_table_access_exp(&mut self, obj: &Exp, key: &Exp, a: isize, n: isize, line: Line) -> Result<()> {
-        unimplemented!()
+        let b = self.alloc_register()? as isize;
+        self.codegen_exp(obj, b, 1);
+        let c = self.alloc_register()? as isize;
+        self.codegen_exp(key, c, 1);
+        self.emit_get_table(line, a, b, c);
+        self.free_registers(2);
+        Ok(())
     }
 
     fn codegen_fn_call_exp(&mut self, fn_call: &FnCall, a: isize, n: isize) -> Result<()> {
