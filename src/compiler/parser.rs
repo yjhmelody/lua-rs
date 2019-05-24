@@ -7,12 +7,12 @@ use crate::compiler::token::Token;
 use crate::number::parser::{parse_float, parse_integer};
 
 /// parse gets a lexer and returns a Lua Block which is Lua AST
-pub fn parse(lexer: &mut Lexer) -> Block {
+pub fn parse(lexer: &mut impl Lex) -> Block {
     // todo: handler all errors in this function?
     parse_block(lexer).unwrap()
 }
 
-pub fn parse_block(lexer: &mut Lexer) -> Result<Block> {
+pub fn parse_block(lexer: &mut impl Lex) -> Result<Block> {
     Ok(Block::new(
         parse_stats(lexer)?,
         parse_ret_exps(lexer)?,
@@ -20,7 +20,7 @@ pub fn parse_block(lexer: &mut Lexer) -> Result<Block> {
     ))
 }
 
-fn parse_stats(lexer: &mut Lexer) -> Result<Vec<Stat>> {
+fn parse_stats(lexer: &mut impl Lex) -> Result<Vec<Stat>> {
     let mut stats = vec![];
     while !_is_return_or_block_end(lexer.look_ahead()) {
         let stat = parse_stat(lexer)?;
@@ -34,7 +34,7 @@ fn parse_stats(lexer: &mut Lexer) -> Result<Vec<Stat>> {
     Ok(stats)
 }
 
-fn parse_ret_exps(lexer: &mut Lexer) -> Result<Vec<Exp>> {
+fn parse_ret_exps(lexer: &mut impl Lex) -> Result<Vec<Exp>> {
     match lexer.look_ahead() {
         Ok(Token::KwReturn) => {}
         _ => return Ok(vec![]),
@@ -57,7 +57,7 @@ fn parse_ret_exps(lexer: &mut Lexer) -> Result<Vec<Exp>> {
     }
 }
 
-fn parse_exp_list(lexer: &mut Lexer) -> Result<Vec<Exp>> {
+fn parse_exp_list(lexer: &mut impl Lex) -> Result<Vec<Exp>> {
     // exp {, exp}
     let mut exp_list = vec![];
     exp_list.push(parse_exp(lexer)?);
@@ -70,7 +70,7 @@ fn parse_exp_list(lexer: &mut Lexer) -> Result<Vec<Exp>> {
 
 /********************* Parse Statement  **********************/
 
-fn parse_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_stat(lexer: &mut impl Lex) -> Result<Stat> {
     match lexer.look_ahead()? {
         // deal with `;`
         Token::SepSemi => parse_empty_stat(lexer),
@@ -88,17 +88,17 @@ fn parse_stat(lexer: &mut Lexer) -> Result<Stat> {
     }
 }
 
-fn parse_empty_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_empty_stat(lexer: &mut impl Lex) -> Result<Stat> {
     lexer.skip_next_token();
     Ok(Stat::Empty)
 }
 
-fn parse_break_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_break_stat(lexer: &mut impl Lex) -> Result<Stat> {
     lexer.skip_next_token();
     Ok(Stat::Break(lexer.current_line()))
 }
 
-fn parse_label_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_label_stat(lexer: &mut impl Lex) -> Result<Stat> {
     // skip `::`
     lexer.skip_next_token();
     let name = lexer.next_ident()?;
@@ -111,14 +111,14 @@ fn parse_label_stat(lexer: &mut Lexer) -> Result<Stat> {
     }
 }
 
-fn parse_goto_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_goto_stat(lexer: &mut impl Lex) -> Result<Stat> {
     // skip `goto`
     lexer.skip_next_token();
     let name = lexer.next_ident()?;
     Ok(Stat::Goto(name))
 }
 
-fn parse_do_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_do_stat(lexer: &mut impl Lex) -> Result<Stat> {
     // skip `do`
     lexer.skip_next_token();
     let block = Box::new(parse_block(lexer)?);
@@ -128,7 +128,7 @@ fn parse_do_stat(lexer: &mut Lexer) -> Result<Stat> {
     }
 }
 
-fn parse_while_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_while_stat(lexer: &mut impl Lex) -> Result<Stat> {
     lexer.skip_next_token();
     let exp = parse_exp(lexer)?;
     match lexer.next_token() {
@@ -144,7 +144,7 @@ fn parse_while_stat(lexer: &mut Lexer) -> Result<Stat> {
     }
 }
 
-fn parse_repeat_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_repeat_stat(lexer: &mut impl Lex) -> Result<Stat> {
     // skip `repeat`
     lexer.skip_next_token();
     let block = Box::new(parse_block(lexer)?);
@@ -157,7 +157,7 @@ fn parse_repeat_stat(lexer: &mut Lexer) -> Result<Stat> {
     }
 }
 
-fn parse_if_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_if_stat(lexer: &mut impl Lex) -> Result<Stat> {
     // skip `if`
     lexer.skip_next_token();
     let mut exps = vec![];
@@ -190,7 +190,7 @@ fn parse_if_stat(lexer: &mut Lexer) -> Result<Stat> {
     Ok(Stat::Condition(exps, blocks))
 }
 
-fn parse_for_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_for_stat(lexer: &mut impl Lex) -> Result<Stat> {
     lexer.skip_next_token();
     let line_of_for = lexer.current_line();
     let name = lexer.next_ident()?;
@@ -203,7 +203,7 @@ fn parse_for_stat(lexer: &mut Lexer) -> Result<Stat> {
     }
 }
 
-fn _parse_for_num_stat(lexer: &mut Lexer, line_of_for: Line, var_name: String) -> Result<Stat> {
+fn _parse_for_num_stat(lexer: &mut impl Lex, line_of_for: Line, var_name: String) -> Result<Stat> {
     lexer.skip_next_token();
     let init_exp = parse_exp(lexer)?;
     let limit_exp = match lexer.look_ahead() {
@@ -239,7 +239,7 @@ fn _parse_for_num_stat(lexer: &mut Lexer, line_of_for: Line, var_name: String) -
     Ok(Stat::ForNum(ForNum::new(var_name, init_exp, limit_exp, step_exp, block, line_of_for, line_of_do)))
 }
 
-fn parse_local_assign_or_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_local_assign_or_fn_def_stat(lexer: &mut impl Lex) -> Result<Stat> {
     lexer.skip_next_token();
     match lexer.look_ahead() {
         Ok(Token::KwFunction) => _parse_local_fn_def_stat(lexer),
@@ -247,7 +247,7 @@ fn parse_local_assign_or_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
     }
 }
 
-fn _parse_local_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn _parse_local_fn_def_stat(lexer: &mut impl Lex) -> Result<Stat> {
     // skip `function`
     lexer.skip_next_token();
     let name = lexer.next_ident()?;
@@ -260,7 +260,7 @@ fn _parse_local_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
     }
 }
 
-fn _parse_local_var_decl_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn _parse_local_var_decl_stat(lexer: &mut impl Lex) -> Result<Stat> {
     let name0 = lexer.next_ident()?;
     let name_list = _parse_name_list(lexer, name0)?;
     let exp_list = if let Ok(Token::OpAssign) = lexer.look_ahead() {
@@ -277,7 +277,7 @@ fn _parse_local_var_decl_stat(lexer: &mut Lexer) -> Result<Stat> {
     ))
 }
 
-fn parse_assign_or_fn_call_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_assign_or_fn_call_stat(lexer: &mut impl Lex) -> Result<Stat> {
     let prefix_exp = parse_prefix_exp(lexer);
     match prefix_exp {
         Ok(Exp::FnCall(fn_call)) => {
@@ -289,7 +289,7 @@ fn parse_assign_or_fn_call_stat(lexer: &mut Lexer) -> Result<Stat> {
     }
 }
 
-fn parse_assign_stat(lexer: &mut Lexer, var0: Exp) -> Result<Stat> {
+fn parse_assign_stat(lexer: &mut impl Lex, var0: Exp) -> Result<Stat> {
     let var_list = _parse_var_list(lexer, var0)?;
     if lexer.check_next_token(Token::OpAssign) {
         let exp_list = parse_exp_list(lexer)?;
@@ -300,7 +300,7 @@ fn parse_assign_stat(lexer: &mut Lexer, var0: Exp) -> Result<Stat> {
     }
 }
 
-fn parse_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
+fn parse_fn_def_stat(lexer: &mut impl Lex) -> Result<Stat> {
     // skip `function`
     lexer.skip_next_token();
     let mut has_colon = false;
@@ -322,7 +322,7 @@ fn parse_fn_def_stat(lexer: &mut Lexer) -> Result<Stat> {
     unreachable!()
 }
 
-fn _parse_var_list(lexer: &mut Lexer, var0: Exp) -> Result<Vec<Exp>> {
+fn _parse_var_list(lexer: &mut impl Lex, var0: Exp) -> Result<Vec<Exp>> {
     let mut var_list = vec![];
     if _is_var_exp(&var0) {
         var_list.push(var0);
@@ -337,7 +337,7 @@ fn _parse_var_list(lexer: &mut Lexer, var0: Exp) -> Result<Vec<Exp>> {
     Ok(var_list)
 }
 
-fn _parse_for_in_stat(lexer: &mut Lexer, name: String) -> Result<Stat> {
+fn _parse_for_in_stat(lexer: &mut impl Lex, name: String) -> Result<Stat> {
     let name_list = _parse_name_list(lexer, name)?;
     match lexer.next_token() {
         Ok(Token::KwIn) => {
@@ -358,7 +358,7 @@ fn _parse_for_in_stat(lexer: &mut Lexer, name: String) -> Result<Stat> {
     }
 }
 
-fn _parse_name_list(lexer: &mut Lexer, name0: String) -> Result<Vec<String>> {
+fn _parse_name_list(lexer: &mut impl Lex, name0: String) -> Result<Vec<String>> {
     let mut name_list = vec![name0];
     while let Ok(Token::SepComma) = lexer.look_ahead() {
         let name = lexer.next_ident()?;
@@ -367,7 +367,7 @@ fn _parse_name_list(lexer: &mut Lexer, name0: String) -> Result<Vec<String>> {
     Ok(name_list)
 }
 
-fn _parse_fn_name(lexer: &mut Lexer, has_colon: &mut bool) -> Result<Exp> {
+fn _parse_fn_name(lexer: &mut impl Lex, has_colon: &mut bool) -> Result<Exp> {
     // fn_name ::= Name {`.` Name} [`:` Name]
     let name = lexer.next_ident()?;
     let line = lexer.current_line();
@@ -396,11 +396,11 @@ fn _parse_fn_name(lexer: &mut Lexer, has_colon: &mut bool) -> Result<Exp> {
 
 /******************* Parse Expression *************************/
 
-fn parse_exp(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp(lexer: &mut impl Lex) -> Result<Exp> {
     parse_exp12(lexer)
 }
 
-fn parse_exp12(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp12(lexer: &mut impl Lex) -> Result<Exp> {
     // x or y
     let mut exp = Box::new(parse_exp11(lexer)?);
 
@@ -413,7 +413,7 @@ fn parse_exp12(lexer: &mut Lexer) -> Result<Exp> {
     Ok(*exp)
 }
 
-fn parse_exp11(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp11(lexer: &mut impl Lex) -> Result<Exp> {
     // x and y
     let mut exp = Box::new(parse_exp10(lexer)?);
     while let Ok(Token::OpAnd) = lexer.look_ahead() {
@@ -424,7 +424,7 @@ fn parse_exp11(lexer: &mut Lexer) -> Result<Exp> {
     Ok(*exp)
 }
 
-fn parse_exp10(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp10(lexer: &mut impl Lex) -> Result<Exp> {
     // x `cmp` y
     let mut exp = Box::new(parse_exp9(lexer)?);
     loop {
@@ -441,7 +441,7 @@ fn parse_exp10(lexer: &mut Lexer) -> Result<Exp> {
     Ok(*exp)
 }
 
-fn parse_exp9(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp9(lexer: &mut impl Lex) -> Result<Exp> {
     // x | y
     let mut exp = Box::new(parse_exp8(lexer)?);
     while let Ok(Token::OpBitOr) = lexer.look_ahead() {
@@ -452,7 +452,7 @@ fn parse_exp9(lexer: &mut Lexer) -> Result<Exp> {
     Ok(*exp)
 }
 
-fn parse_exp8(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp8(lexer: &mut impl Lex) -> Result<Exp> {
     // x ~ y
     let mut exp = Box::new(parse_exp7(lexer)?);
     while let Ok(Token::OpWave) = lexer.look_ahead() {
@@ -463,7 +463,7 @@ fn parse_exp8(lexer: &mut Lexer) -> Result<Exp> {
     Ok(*exp)
 }
 
-fn parse_exp7(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp7(lexer: &mut impl Lex) -> Result<Exp> {
     // x & y
     let mut exp = Box::new(parse_exp6(lexer)?);
     while let Ok(Token::OpBitAnd) = lexer.look_ahead() {
@@ -474,7 +474,7 @@ fn parse_exp7(lexer: &mut Lexer) -> Result<Exp> {
     Ok(*exp)
 }
 
-fn parse_exp6(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp6(lexer: &mut impl Lex) -> Result<Exp> {
     // x >>/<< y
     let mut exp = Box::new(parse_exp5(lexer)?);
     loop {
@@ -491,7 +491,7 @@ fn parse_exp6(lexer: &mut Lexer) -> Result<Exp> {
     Ok(*exp)
 }
 
-fn parse_exp5(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp5(lexer: &mut impl Lex) -> Result<Exp> {
     // x .. y
     let exp = parse_exp4(lexer)?;
     match lexer.look_ahead() {
@@ -511,7 +511,7 @@ fn parse_exp5(lexer: &mut Lexer) -> Result<Exp> {
     }
 }
 
-fn parse_exp4(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp4(lexer: &mut impl Lex) -> Result<Exp> {
     // x +/- y
     let mut exp = Box::new(parse_exp3(lexer)?);
     loop {
@@ -528,7 +528,7 @@ fn parse_exp4(lexer: &mut Lexer) -> Result<Exp> {
     Ok(*exp)
 }
 
-fn parse_exp3(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp3(lexer: &mut impl Lex) -> Result<Exp> {
     // *  %  /  //
     let mut exp = Box::new(parse_exp2(lexer)?);
     loop {
@@ -545,7 +545,7 @@ fn parse_exp3(lexer: &mut Lexer) -> Result<Exp> {
     Ok(*exp)
 }
 
-fn parse_exp2(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp2(lexer: &mut impl Lex) -> Result<Exp> {
     // unary ops: not # - ~
     match lexer.look_ahead() {
         Ok(Token::OpNot) | Ok(Token::OpLen) | Ok(Token::OpWave) | Ok(Token::OpMinus) => {
@@ -558,7 +558,7 @@ fn parse_exp2(lexer: &mut Lexer) -> Result<Exp> {
     }
 }
 
-fn parse_exp1(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp1(lexer: &mut impl Lex) -> Result<Exp> {
     // x ^ y
     let mut exp = Box::new(parse_exp0(lexer)?);
     if let Ok(Token::OpPow) = lexer.look_ahead() {
@@ -569,7 +569,7 @@ fn parse_exp1(lexer: &mut Lexer) -> Result<Exp> {
     Ok(*exp)
 }
 
-fn parse_exp0(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_exp0(lexer: &mut impl Lex) -> Result<Exp> {
     // primary
     match lexer.look_ahead() {
         Ok(Token::VarArg) => {
@@ -610,7 +610,7 @@ fn parse_exp0(lexer: &mut Lexer) -> Result<Exp> {
 
 /******************* Parse Primary *************************/
 
-fn parse_number_exp(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_number_exp(lexer: &mut impl Lex) -> Result<Exp> {
     let num = lexer.next_token();
     let line = lexer.current_line();
     if let Ok(Token::Number(val)) = num {
@@ -626,7 +626,7 @@ fn parse_number_exp(lexer: &mut Lexer) -> Result<Exp> {
     }
 }
 
-fn parse_table_constructor_exp(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_table_constructor_exp(lexer: &mut impl Lex) -> Result<Exp> {
     // `{`
     if !lexer.check_next_token(Token::SepLcurly) {
         return Err(Error::IllegalExpression { line: lexer.current_line() });
@@ -643,7 +643,7 @@ fn parse_table_constructor_exp(lexer: &mut Lexer) -> Result<Exp> {
     Ok(Exp::TableConstructor(fields, last_line))
 }
 
-fn parse_fn_def_exp(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_fn_def_exp(lexer: &mut impl Lex) -> Result<Exp> {
     // it has skip `function` keyword
     let line = lexer.current_line();
     println!("{:#?}", lexer.look_ahead());
@@ -673,7 +673,7 @@ fn parse_fn_def_exp(lexer: &mut Lexer) -> Result<Exp> {
     Ok(Exp::FnDef(FnDef::new(ParList::new(par_list, is_vararg), block, line, last_line)))
 }
 
-fn parse_prefix_exp(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_prefix_exp(lexer: &mut impl Lex) -> Result<Exp> {
     let exp;
     if let Ok(Token::Identifier(val)) = lexer.look_ahead() {
         lexer.skip_next_token();
@@ -721,7 +721,7 @@ fn parse_prefix_exp(lexer: &mut Lexer) -> Result<Exp> {
     }
 }
 
-fn parse_parens_exp(lexer: &mut Lexer) -> Result<Exp> {
+fn parse_parens_exp(lexer: &mut impl Lex) -> Result<Exp> {
     if !lexer.check_next_token(Token::SepLparen) {
         return Err(Error::IllegalExpression { line: lexer.current_line() });
     }
@@ -744,7 +744,7 @@ fn parse_parens_exp(lexer: &mut Lexer) -> Result<Exp> {
     Ok(exp)
 }
 
-fn _parse_fn_call_exp(lexer: &mut Lexer, prefix_exp: Box<Exp>) -> Result<Exp> {
+fn _parse_fn_call_exp(lexer: &mut impl Lex, prefix_exp: Box<Exp>) -> Result<Exp> {
     // [`:` Name]
     let name_exp = _parse_fn_name_exp(lexer).ok();
     let line = lexer.current_line();
@@ -754,7 +754,7 @@ fn _parse_fn_call_exp(lexer: &mut Lexer, prefix_exp: Box<Exp>) -> Result<Exp> {
     Ok(Exp::FnCall(FnCall::new(prefix_exp, name_exp, args, line, last_line)))
 }
 
-fn _parse_fn_name_exp(lexer: &mut Lexer) -> Result<Box<Exp>> {
+fn _parse_fn_name_exp(lexer: &mut impl Lex) -> Result<Box<Exp>> {
     if let Ok(Token::SepColon) = lexer.look_ahead() {
         lexer.skip_next_token();
         let val = lexer.next_ident()?;
@@ -766,7 +766,7 @@ fn _parse_fn_name_exp(lexer: &mut Lexer) -> Result<Box<Exp>> {
     }
 }
 
-fn _parse_fn_call_args(lexer: &mut Lexer) -> Result<Vec<Exp>> {
+fn _parse_fn_call_args(lexer: &mut impl Lex) -> Result<Vec<Exp>> {
     match lexer.look_ahead() {
         // (arg1, arg2 ...)
         Ok(Token::SepLparen) => {
@@ -805,7 +805,7 @@ fn _parse_fn_call_args(lexer: &mut Lexer) -> Result<Vec<Exp>> {
     }
 }
 
-fn _parse_field_list(lexer: &mut Lexer) -> Result<Vec<Field>> {
+fn _parse_field_list(lexer: &mut impl Lex) -> Result<Vec<Field>> {
     let mut fields = vec![];
 
     if let Ok(Token::SepRcurly) = lexer.look_ahead() {
@@ -832,7 +832,7 @@ fn _parse_field_list(lexer: &mut Lexer) -> Result<Vec<Field>> {
     Ok(fields)
 }
 
-fn _parse_field(lexer: &mut Lexer) -> Result<(Option<Exp>, Exp)> {
+fn _parse_field(lexer: &mut impl Lex) -> Result<(Option<Exp>, Exp)> {
     // field ::= `[` exp `]` `=` exp | Name `=` exp | exp
     if let Ok(Token::SepLbrack) = lexer.look_ahead() {
         lexer.skip_next_token();
@@ -862,7 +862,7 @@ fn _parse_field(lexer: &mut Lexer) -> Result<(Option<Exp>, Exp)> {
     }
 }
 
-fn _parse_par_list(lexer: &mut Lexer, is_vararg: &mut bool) -> Result<Vec<String>> {
+fn _parse_par_list(lexer: &mut impl Lex, is_vararg: &mut bool) -> Result<Vec<String>> {
     let mut params = vec![];
     match lexer.look_ahead() {
         Ok(Token::SepRparen) => { return Ok(params); }
@@ -926,8 +926,9 @@ fn _is_field_sep(tok: Result<Token>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::string::ToString;
+
+    use super::*;
 
     #[test]
     fn test_parse() {

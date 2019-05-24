@@ -13,6 +13,37 @@ use crate::compiler::token::Token;
 /// 代码原位置，用于代码生成的信息
 pub type Line = usize;
 
+pub trait Lex {
+    /// 返回当前行
+    fn current_line(&self) -> Line {
+        0
+    }
+    /// 前瞻1个token
+    fn look_ahead(&mut self) -> Result<Token>;
+    /// 返回下一个token
+    fn next_token(&mut self) -> Result<Token>;
+    /// 跳过下一个token
+    fn skip_next_token(&mut self) {
+        let _tok = self.next_token();
+    }
+    /// 返回下一个token
+    fn next_ident(&mut self) -> Result<String> {
+        let tok = self.next_token();
+        match tok {
+            Ok(Token::Identifier(s)) => Ok(s),
+            _ => Err(Error::NotIdentifier { line: self.current_line() }),
+        }
+    }
+
+    /// 检查下一个token是否tok
+    fn check_next_token(&mut self, tok: Token) -> bool {
+        match self.next_token() {
+            Ok(ref token) if tok == *token => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Lexer {
     /// 源码
@@ -83,42 +114,15 @@ lazy_static! {
     static ref re_unicode_escaped_seq: Regex = Regex::new(r##"^\\u\{[[:xdigit]]+\}"##).unwrap();
 }
 
-impl Lexer {
-    /// 从String中创建词法分析器
-    #[inline]
-    pub fn new(chunk: String, chunk_name: String) -> Self {
-        Self {
-            chunk: chunk.into_bytes(),
-            index: 0,
-            chunk_name,
-            line: 1,
-            next_tok: Err(Error::IllegalToken { line: 1 }),
-            next_line: 0,
-        }
-    }
 
-    /// 从IntoIterator中创建词法分析器
-    #[inline]
-    pub fn from_iter<T: IntoIterator<Item=u8>>(iter: T, chunk_name: String) -> Self {
-        let chunk = iter.into_iter().collect();
-        Self {
-            chunk,
-            index: 0,
-            chunk_name,
-            line: 1,
-            next_tok: Err(Error::IllegalToken { line: 1 }),
-            next_line: 0,
-        }
-    }
-
+impl Lex for Lexer {
     /// 返回当前token的行号
     #[inline]
-    pub fn current_line(&self) -> Line {
+    fn current_line(&self) -> Line {
         self.line
     }
 
-    /// 向前查看1个token
-    pub fn look_ahead(&mut self) -> Result<Token> {
+    fn look_ahead(&mut self) -> Result<Token> {
         // 检查是否已经缓存
         if self.next_line > 0 {
             self.next_tok.clone()
@@ -131,19 +135,7 @@ impl Lexer {
         }
     }
 
-    /// 返回当前单个字符的token
-    #[inline]
-    fn simple_token(&mut self, token: Token) -> Result<Token> {
-        self.next(1);
-        Ok(token)
-    }
-
-    pub fn skip_next_token(&mut self) {
-        let _tok = self.next_token();
-    }
-
-    /// 返回下一个token
-    pub fn next_token(&mut self) -> Result<Token> {
+    fn next_token(&mut self) -> Result<Token> {
         if self.next_line > 0 {
             self.line = self.next_line;
             self.next_line = 0;
@@ -266,21 +258,41 @@ impl Lexer {
             }
         }
     }
+}
 
-    /// 返回 identifier string，若不是则Err
-    pub fn next_ident(&mut self) -> Result<String> {
-        let tok = self.next_token();
-        match tok {
-            Ok(Token::Identifier(s)) => Ok(s),
-            _ => Err(Error::NotIdentifier { line: self.current_line() }),
+impl Lexer {
+    /// 从String中创建词法分析器
+    #[inline]
+    pub fn new(chunk: String, chunk_name: String) -> Self {
+        Self {
+            chunk: chunk.into_bytes(),
+            index: 0,
+            chunk_name,
+            line: 1,
+            next_tok: Err(Error::IllegalToken { line: 1 }),
+            next_line: 0,
         }
     }
 
-    pub fn check_next_token(&mut self, tok: Token) -> bool {
-        match self.next_token() {
-            Ok(ref token) if tok == *token => true,
-            _ => false,
+    /// 从IntoIterator中创建词法分析器
+    #[inline]
+    pub fn from_iter<T: IntoIterator<Item=u8>>(iter: T, chunk_name: String) -> Self {
+        let chunk = iter.into_iter().collect();
+        Self {
+            chunk,
+            index: 0,
+            chunk_name,
+            line: 1,
+            next_tok: Err(Error::IllegalToken { line: 1 }),
+            next_line: 0,
         }
+    }
+
+    /// 返回当前单个字符的token
+    #[inline]
+    fn simple_token(&mut self, token: Token) -> Result<Token> {
+        self.next(1);
+        Ok(token)
     }
 
     /// 转移字符串

@@ -215,11 +215,11 @@ impl FnInfo {
     fn exit_scope(&mut self) -> Result<()> {
         let jump = self.breaks.pop().ok_or(Error::NoMoreScopes)?;
         unimplemented!();
-        self.scope_level -= 1;
-        match self.local_vars.pop() {
-            Some(vars) => Ok(()),
-            None => Err(Error::NoMoreScopes)
-        }
+//        self.scope_level -= 1;
+//        match self.local_vars.pop() {
+//            Some(vars) => Ok(()),
+//            None => Err(Error::NoMoreScopes)
+//        }
     }
 
     fn get_jump_arg_a(&mut self) -> isize {
@@ -615,7 +615,7 @@ impl FnInfo {
 impl FnInfo {
     fn codegen_block(&mut self, block: &Block) -> Result<()> {
         for stat in &block.stats {
-            self.codegen_stat(stat);
+            self.codegen_stat(stat)?;
         }
         self.codegen_ret_stat(&block.ret_exps, block.last_line)
     }
@@ -774,7 +774,7 @@ impl FnInfo {
 
             let block = &blocks[i];
             self.enter_scope(false);
-            self.codegen_block(block);
+            self.codegen_block(block)?;
             self.close_open_up_values(block.last_line);
             self.exit_scope()?;
 
@@ -801,13 +801,13 @@ impl FnInfo {
             "(for limit)".to_string(),
             "(for step)".to_string(),
         ];
-        self.codegen_local_var_decl_stat_borrow(&names, &vec![&for_num.init, &for_num.limit, &for_num.step]);
+        self.codegen_local_var_decl_stat_borrow(&names, &vec![&for_num.init, &for_num.limit, &for_num.step])?;
         self.add_local_var(for_num.name.clone())?;
 
 
         let a = self.used_regs as isize - 4;
         let pc_for_prep = self.emit_for_prep(for_num.line_of_do, a, 0);
-        self.codegen_block(&*for_num.block);
+        self.codegen_block(&*for_num.block)?;
         self.close_open_up_values(for_num.block.last_line);
         let pc_for_loop = self.emit_for_loop(for_num.line_of_for, a, 0);
 
@@ -888,7 +888,7 @@ impl FnInfo {
                     mult_ret = true;
                     let n = names.len() - exps.len() + 1;
                     self.codegen_exp(exp, a as isize, n as isize);
-                    self.alloc_registers(n - 1);
+                    self.alloc_registers(n - 1)?;
                 } else {
                     self.codegen_exp(exp, a as isize, 1);
                 }
@@ -962,7 +962,7 @@ impl FnInfo {
             sub_fn.0.borrow_mut().add_local_var(param.clone())?;
         }
 
-        self.codegen_block(&*fn_def.block);
+        self.codegen_block(&*fn_def.block)?;
         sub_fn.0.borrow_mut().exit_scope()?;
         sub_fn.0.borrow_mut().emit_return(fn_def.block.last_line, 0, 0);
 
