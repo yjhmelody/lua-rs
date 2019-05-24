@@ -651,9 +651,9 @@ impl FnInfo {
                 let reg = self.alloc_register()? as isize;
                 // has `...` or function call
                 if i == num && is_mult_ret {
-                    self.codegen_exp(exp, reg, -1);
+                    self.codegen_exp(exp, reg, -1)?;
                 } else {
-                    self.codegen_exp(exp, reg, 1);
+                    self.codegen_exp(exp, reg, 1)?;
                 }
             }
             self.free_registers(num);
@@ -708,7 +708,7 @@ impl FnInfo {
         self.codegen_block(block)?;
 
         let reg = self.alloc_register()?;
-        self.codegen_exp(exp, reg as isize, 1);
+        self.codegen_exp(exp, reg as isize, 1)?;
         self.free_register();
 
         self.emit_test(block.last_line, reg as isize, 0);
@@ -732,7 +732,7 @@ impl FnInfo {
         let pc_before_exp = self.pc();
 
         let reg = self.alloc_register()?;
-        self.codegen_exp(exp, reg as isize, 1);
+        self.codegen_exp(exp, reg as isize, 1)?;
         self.free_register();
 
         self.emit_test(block.last_line, reg as isize, 0);
@@ -768,7 +768,7 @@ impl FnInfo {
             }
 
             let reg = self.alloc_register()?;
-            self.codegen_exp(exp, reg as isize, 1);
+            self.codegen_exp(exp, reg as isize, 1)?;
             self.free_register();
 
             self.emit_test(0, 0, 0);
@@ -855,9 +855,9 @@ impl FnInfo {
         for (i, name_exp) in names.iter().enumerate() {
             if let Exp::TableAccess(prefix_exp, key_exp, line) = name_exp {
                 tbl_regs[i] = self.alloc_register()? as isize;
-                self.codegen_exp(&*prefix_exp, tbl_regs[i], 1);
+                self.codegen_exp(&*prefix_exp, tbl_regs[i], 1)?;
                 k_regs[i] = self.alloc_register()? as isize;
-                self.codegen_exp(&*key_exp, k_regs[i], 1);
+                self.codegen_exp(&*key_exp, k_regs[i], 1)?;
             } else {
                 unimplemented!()
             }
@@ -871,15 +871,15 @@ impl FnInfo {
         if exps.len() == names.len() {
             for exp in exps.iter() {
                 let a = self.alloc_register()?;
-                self.codegen_exp(exp, a as isize, 1);
+                self.codegen_exp(exp, a as isize, 1)?;
             }
         } else if exps.len() > names.len() {
             for (i, exp) in exps.iter().enumerate() {
                 let a = self.alloc_register()?;
                 if i == exps.len() - 1 && is_vararg_or_fn_call(exp) {
-                    self.codegen_exp(exp, a as isize, 0);
+                    self.codegen_exp(exp, a as isize, 0)?;
                 } else {
-                    self.codegen_exp(exp, a as isize, 1);
+                    self.codegen_exp(exp, a as isize, 1)?;
                 }
             }
         } else {
@@ -889,10 +889,10 @@ impl FnInfo {
                 if i == exps.len() - 1 && is_vararg_or_fn_call(exp) {
                     mult_ret = true;
                     let n = names.len() - exps.len() + 1;
-                    self.codegen_exp(exp, a as isize, n as isize);
+                    self.codegen_exp(exp, a as isize, n as isize)?;
                     self.alloc_registers(n - 1)?;
                 } else {
-                    self.codegen_exp(exp, a as isize, 1);
+                    self.codegen_exp(exp, a as isize, 1)?;
                 }
             }
 
@@ -919,24 +919,42 @@ impl FnInfo {
 /********************** expression code generation ***********************/
 
 impl FnInfo {
-    fn codegen_exp(&mut self, exp: &Exp, a: isize, n: isize) {
+    fn codegen_exp(&mut self, exp: &Exp, a: isize, n: isize) -> Result<()> {
         match exp {
-            Exp::Nil(line) => self.emit_load_nil(*line, a, n),
-            Exp::False(line) => self.emit_load_bool(*line, a, 0, 0),
-            Exp::True(line) => self.emit_load_bool(*line, a, 1, 0),
-            Exp::Integer(num, line) => self.emit_load_k(*line, a, Constant::Integer(*num)),
-            Exp::Float(num, line) => self.emit_load_k(*line, a, Constant::Number(*num)),
-            Exp::String(s, line) => self.emit_load_k(*line, a, Constant::String(s.clone())),
-            Exp::Name(name, line) => { self.codegen_name_exp(name, a, n, *line); }
+            Exp::Nil(line) => {
+                self.emit_load_nil(*line, a, n);
+                Ok(())
+            }
+            Exp::False(line) => {
+                self.emit_load_bool(*line, a, 0, 0);
+                Ok(())
+            }
+            Exp::True(line) => {
+                self.emit_load_bool(*line, a, 1, 0);
+                Ok(())
+            }
+            Exp::Integer(num, line) => {
+                self.emit_load_k(*line, a, Constant::Integer(*num));
+                Ok(())
+            }
+            Exp::Float(num, line) => {
+                self.emit_load_k(*line, a, Constant::Number(*num));
+                Ok(())
+            }
+            Exp::String(s, line) => {
+                self.emit_load_k(*line, a, Constant::String(s.clone()));
+                Ok(())
+            }
+            Exp::Name(name, line) => self.codegen_name_exp(name, a, n, *line),
             Exp::Parens(exp) => self.codegen_exp(&*exp, a, n),
-            Exp::Vararg(line) => { self.codegen_vararg_exp(a, n, *line); }
-            Exp::Unop(op, exp, line) => { self.codegen_unop_exp(op, exp, a, *line); }
-            Exp::Binop(exp1, op, exp2, line) => { self.codegen_binop_exp(&*exp1, op, &*exp2, a, n, *line); }
-            Exp::Concat(exps, line) => { self.codegen_concat_exp(exps, a, n, *line); }
-            Exp::TableConstructor(fields, line) => { self.codegen_table_constructor_exp(fields, a, n, *line); }
-            Exp::TableAccess(obj, key, line) => { self.codegen_table_access_exp(&*obj, &*key, a, n, *line); }
-            Exp::FnDef(fn_def) => { self.codegen_fn_def_exp(fn_def, a); }
-            Exp::FnCall(fn_call) => { self.codegen_fn_call_exp(fn_call, a, n); }
+            Exp::Vararg(line) => self.codegen_vararg_exp(a, n, *line),
+            Exp::Unop(op, exp, line) => self.codegen_unop_exp(op, exp, a, *line),
+            Exp::Binop(exp1, op, exp2, line) => self.codegen_binop_exp(&*exp1, op, &*exp2, a, n, *line),
+            Exp::Concat(exps, line) => self.codegen_concat_exp(exps, a, n, *line),
+            Exp::TableConstructor(fields, line) => self.codegen_table_constructor_exp(fields, a, n, *line),
+            Exp::TableAccess(obj, key, line) => self.codegen_table_access_exp(&*obj, &*key, a, n, *line),
+            Exp::FnDef(fn_def) => self.codegen_fn_def_exp(fn_def, a),
+            Exp::FnCall(fn_call) => self.codegen_fn_call_exp(fn_call, a, n),
         }
     }
 
@@ -975,7 +993,7 @@ impl FnInfo {
 
     fn codegen_vararg_exp(&mut self, a: isize, n: isize, line: Line) -> Result<()> {
         if !self.is_vararg {
-            Err(Error::NotVararg)
+            Err(Error::NotVararg { line })
         } else {
             self.emit_vararg(line, a, n);
             Ok(())
@@ -984,7 +1002,7 @@ impl FnInfo {
 
     fn codegen_unop_exp(&mut self, op: &Token, exp: &Exp, a: isize, line: Line) -> Result<()> {
         let b = self.alloc_register()? as isize;
-        self.codegen_exp(exp, b, 1);
+        self.codegen_exp(exp, b, 1)?;
         self.emit_unary_op(line, op, a, b);
         self.free_register();
         Ok(())
@@ -994,7 +1012,7 @@ impl FnInfo {
         match op {
             Token::OpAnd | Token::OpOr => {
                 let b = self.alloc_register()? as isize;
-                self.codegen_exp(exp1, b, 1);
+                self.codegen_exp(exp1, b, 1)?;
                 self.free_register();
                 if *op == Token::OpAnd {
                     self.emit_test_set(line, a, b, 0);
@@ -1004,7 +1022,7 @@ impl FnInfo {
                 let jmp_pc = self.emit_jmp(line, 0, 0);
 
                 let b = self.alloc_register()? as isize;
-                self.codegen_exp(exp2, b, 1);
+                self.codegen_exp(exp2, b, 1)?;
                 self.free_register();
                 self.emit_move(line, a, b);
                 self.fix_sbx(jmp_pc, self.pc() as isize - jmp_pc as isize);
@@ -1013,7 +1031,7 @@ impl FnInfo {
             _ => {
                 let b = self.alloc_register()? as isize;
                 self.codegen_exp(exp1, b, 1);
-                let c= self.alloc_register()? as isize;
+                let c = self.alloc_register()? as isize;
                 self.codegen_exp(exp2, c, 1);
                 self.emit_binary_op(line, op, a, b, c);
                 self.free_registers(2);
@@ -1025,7 +1043,7 @@ impl FnInfo {
     fn codegen_concat_exp(&mut self, exps: &Vec<Exp>, a: isize, n: isize, line: Line) -> Result<()> {
         for exp in exps {
             let a = self.alloc_register()? as isize;
-            self.codegen_exp(exp, a, 1);
+            self.codegen_exp(exp, a, 1)?;
         }
 
         let c = self.used_regs - 1;
@@ -1033,7 +1051,6 @@ impl FnInfo {
         self.free_registers(c + 1 - b);
         self.emit_ABC(line, opcode::OP_CONCAT, a, b as isize, c as isize);
         Ok(())
-
     }
 
     fn codegen_table_constructor_exp(&mut self, fields: &Vec<Field>, a: isize, n: isize, line: Line) -> Result<()> {
@@ -1055,7 +1072,7 @@ impl FnInfo {
         let b = self.alloc_register()? as isize;
         self.codegen_exp(obj, b, 1);
         let c = self.alloc_register()? as isize;
-        self.codegen_exp(key, c, 1);
+        self.codegen_exp(key, c, 1)?;
         self.emit_get_table(line, a, b, c);
         self.free_registers(2);
         Ok(())
@@ -1070,7 +1087,7 @@ impl FnInfo {
     fn prep_fn_call(&mut self, fn_call: &FnCall, a: isize) -> Result<usize> {
         let mut n_args = fn_call.args.len();
         let mut last_arg_is_vararg_or_fn_call = false;
-        self.codegen_exp(&*fn_call.prefix, a, 1);
+        self.codegen_exp(&*fn_call.prefix, a, 1)?;
 
         // fixme
         match fn_call.name {
@@ -1079,13 +1096,10 @@ impl FnInfo {
                     Exp::String(ref s, line) => {
                         let constant = Constant::String(s.clone());
                         let c = 0x100 + self.constant_index(&constant) as isize;
-                        self.emit_self(line, a, a, c);
+                        self.emit_self(line, a, a, c)
                     }
-                    _ => {
-                        unreachable!();
-                    }
+                    _ => unreachable!()
                 };
-
             }
             _ => {}
         };
@@ -1094,9 +1108,9 @@ impl FnInfo {
             let tmp = self.alloc_register()? as isize;
             if i == n_args - 1 && is_vararg_or_fn_call(arg) {
                 last_arg_is_vararg_or_fn_call = true;
-                self.codegen_exp(arg, tmp, -1);
+                self.codegen_exp(arg, tmp, -1)?;
             } else {
-                self.codegen_exp(arg, tmp, 1);
+                self.codegen_exp(arg, tmp, 1)?;
             }
         }
 

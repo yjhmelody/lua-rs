@@ -1,8 +1,13 @@
+use std::fmt::{self, Display, Formatter};
 use std::result;
 
 use crate::compiler::lexer::Line;
 
 // todo: better error reports
+
+/// Wrapped for parsing time errors
+pub type Result<T> = result::Result<T, Error>;
+
 /// Some Errors produced by parser and lexer which be dealt by parser for reporting syntax errors
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Error {
@@ -40,7 +45,6 @@ pub enum Error {
     IllegalFnCall { line: Line },
     /// Illegal Function definition
     IllegalFnDef { line: Line },
-
     /// No more Registers
     NoMoreRegisters,
     /// Illegal Register
@@ -52,8 +56,38 @@ pub enum Error {
     /// Not a UpValue
     NotUpValue,
     /// Not a vararg function
-    NotVararg,
+    NotVararg { line: Line },
 }
 
-/// Wrapped for parsing time errors
-pub type Result<T> = result::Result<T, Error>;
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        use Error::*;
+        match self {
+            EOF { line } => write!(f, "line: {}, error: EOF", *line),
+            IllegalIdentifier { line } => write!(f, "line: {}, error: IllegalIdentifier", *line),
+            IllegalNumLiteral { line } => write!(f, "line: {}, error: IllegalNumLiteral", *line),
+            IllegalString { line } => write!(f, "line: {}, error: IllegalString", *line),
+            IllegalToken { line } => write!(f, "line: {}, error: IllegalToken", *line),
+            IllegalEscape { line } => write!(f, "line: {}, error: IllegalEscape", *line),
+            NoMoreTokens { line } => write!(f, "line: {}, error: NoMoreTokens", *line),
+            IllegalExpression { line } => write!(f, "line: {}, error: IllegalExpression", *line),
+            IllegalStat { line } => write!(f, "line: {}, error: IllegalStat", *line),
+            NotIdentifier { line } => write!(f, "line: {}, error: NotIdentifier", *line),
+            NotVarExpression { line } => write!(f, "line: {}, error: NotVarExpression", *line),
+            NotOperator { line } => write!(f, "line: {}, error: NotOperator", *line),
+            IllegalFunction { line } => write!(f, "line: {}, error: IllegalFunction", *line),
+            NotMatchBrackets { line } => write!(f, "line: {}, error: NotMatchBrackets", *line),
+            MissingAssignment { line } => write!(f, "line: {}, error: MissingAssignment", *line),
+            IllegalFnCall { line } => write!(f, "line: {}, error: IllegalFnCall", *line),
+            IllegalFnDef { line } => write!(f, "line: {}, error: IllegalFnDef", *line),
+            NoMoreRegisters => write!(f, "codegen error: NoMoreRegisters"),
+            IllegalRegister => write!(f, "codegen error: IllegalRegister"),
+            NoMoreScopes => write!(f, "codegen error: NoMoreScopes"),
+            NoLoop => write!(f, "codegen error: NoLoop"),
+            NotUpValue => write!(f, "codegen error: NotUpValue"),
+            NotVararg { line } => write!(f, "line: {}, codegen error: NotVararg", *line),
+        }
+    }
+}
+
+

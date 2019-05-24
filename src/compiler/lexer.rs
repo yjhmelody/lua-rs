@@ -13,19 +13,24 @@ use crate::compiler::token::Token;
 /// 代码原位置，用于代码生成的信息
 pub type Line = usize;
 
+/// Some structures implementing Lex can be used by parser
 pub trait Lex {
     /// 返回当前行
     fn current_line(&self) -> Line {
         0
     }
+
     /// 前瞻1个token
     fn look_ahead(&mut self) -> Result<Token>;
+
     /// 返回下一个token
     fn next_token(&mut self) -> Result<Token>;
+
     /// 跳过下一个token
     fn skip_next_token(&mut self) {
         let _tok = self.next_token();
     }
+
     /// 返回下一个token
     fn next_ident(&mut self) -> Result<String> {
         let tok = self.next_token();
@@ -44,6 +49,7 @@ pub trait Lex {
     }
 }
 
+/// Lua词法分析器
 #[derive(Debug)]
 pub struct Lexer {
     /// 源码
@@ -56,6 +62,7 @@ pub struct Lexer {
     line: Line,
     /// 缓存前看token
     next_tok: Result<Token>,
+    /// 下个token行号
     next_line: Line,
 }
 
@@ -561,8 +568,7 @@ mod tests {
             0x12.abp-10
             break
             name
-        "##
-            .to_string();
+        "##.to_string();
 
         let mut lexer = Lexer::from_iter(s.bytes(), "test".to_string());
 

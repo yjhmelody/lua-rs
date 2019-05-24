@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::process::exit;
+
 use crate::compiler::ast::*;
 use crate::compiler::error::*;
 use crate::compiler::lexer::*;
@@ -7,11 +9,6 @@ use crate::compiler::token::*;
 use crate::number::parser::*;
 
 /// parse gets a lexer and returns a Lua Block which is Lua AST
-pub fn parse(lexer: &mut impl Lex) -> Block {
-    // todo: handler all errors in this function?
-    parse_block(lexer).unwrap()
-}
-
 pub fn parse_block(lexer: &mut impl Lex) -> Result<Block> {
     Ok(Block::new(
         parse_stats(lexer)?,
@@ -646,8 +643,6 @@ fn parse_table_constructor_exp(lexer: &mut impl Lex) -> Result<Exp> {
 fn parse_fn_def_exp(lexer: &mut impl Lex) -> Result<Exp> {
     // it has skip `function` keyword
     let line = lexer.current_line();
-    println!("{:#?}", lexer.look_ahead());
-
     if !lexer.check_next_token(Token::SepLparen) {
         return Err(Error::IllegalToken {
             line,
@@ -933,7 +928,7 @@ mod tests {
     #[test]
     fn test_parse() {
         let s = r##"
-        -- 注释应该支持中文
+        -- comment
         local a = true and false or false or not true
         local b = ((1 | 2) & 3) >> 1 << 1
         local c = (3 + 2 - 1) * (5 % 2) // 2 / 2 ^ 2
@@ -963,7 +958,8 @@ mod tests {
         "##.to_string();
 
         let mut lexer = Lexer::from_iter(s.bytes(), "test".to_string());
-        let block = parse(&mut lexer);
+
+        let block = parse_block(&mut lexer);
         println!("{:#?}", block);
     }
 }
