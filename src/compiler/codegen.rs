@@ -3,7 +3,7 @@
 #![allow(unused_mut)]
 #![allow(non_snake_case)]
 
-use std::cell::{Ref, RefCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::iter;
 use std::process::id;

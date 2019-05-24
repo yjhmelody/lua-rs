@@ -499,7 +499,6 @@ impl Lexer {
     /// 跳过注释
     fn skip_comment(&mut self) -> Result<()> {
         self.next(2);
-        // long comment: --[[ ...... --]]
         match self.current() {
             Some(b'[') => {
                 self.scan_long_string()?;

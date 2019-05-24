@@ -12,7 +12,7 @@ pub fn parse(lexer: &mut Lexer) -> Block {
     parse_block(lexer).unwrap()
 }
 
-fn parse_block(lexer: &mut Lexer) -> Result<Block> {
+pub fn parse_block(lexer: &mut Lexer) -> Result<Block> {
     Ok(Block::new(
         parse_stats(lexer)?,
         parse_ret_exps(lexer)?,
@@ -39,6 +39,7 @@ fn parse_ret_exps(lexer: &mut Lexer) -> Result<Vec<Exp>> {
         Ok(Token::KwReturn) => {}
         _ => return Ok(vec![]),
     };
+    
     // skip `return`
     lexer.skip_next_token();
     match lexer.look_ahead() {
@@ -198,6 +199,7 @@ fn parse_if_stat(lexer: &mut Lexer) -> Result<Stat> {
         blocks.push(parse_block(lexer)?);
     }
 
+    lexer.skip_next_token();
     Ok(Stat::Condition(exps, blocks))
 }
 
@@ -956,15 +958,23 @@ fn _is_field_sep(tok: Result<Token>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::string::ToString;
 
     #[test]
     fn test_parse() {
         let s = r##"
+        -- 注释应该支持中文
+        local a = true and false or false or not true
+        local b = ((1 | 2) & 3) >> 1 << 1
+        local c = (3 + 2 - 1) * (5 % 2) // 2 / 2 ^ 2
+        local d = not not not not not false
+        local e = - - - - -1
+        local f = ~ ~ ~ ~ ~1
         function preloadSearcher(modname)
           if package.preload[modname] ~= nil then
             return package.preload[modname]
           else
-            return
+            return 1
           end
         end
         package.preload.mymod = function(modname)
@@ -975,14 +985,6 @@ mod tests {
         end
 
         co = function () print("hello") end
-
-        -- 注释应该支持中文
-        local a = true and false or false or not true
-        local b = ((1 | 2) & 3) >> 1 << 1
-        local c = (3 + 2 - 1) * (5 % 2) // 2 / 2 ^ 2
-        local d = not not not not not false
-        local e = - - - - -1
-        local f = ~ ~ ~ ~ ~1
 
         function hello()
           function world()
