@@ -167,7 +167,7 @@ impl Lex for Lexer {
             b'|' => self.simple_token(Token::OpBitOr),
             b'#' => self.simple_token(Token::OpLen),
             b':' => {
-                if self.test("::") {
+                if self.is_start_with("::") {
                     self.next(2);
                     Ok(Token::SepLabel)
                 } else {
@@ -175,7 +175,7 @@ impl Lex for Lexer {
                 }
             }
             b'/' => {
-                if self.test("//") {
+                if self.is_start_with("//") {
                     self.next(2);
                     Ok(Token::OpIDiv)
                 } else {
@@ -183,7 +183,7 @@ impl Lex for Lexer {
                 }
             }
             b'~' => {
-                if self.test("~=") {
+                if self.is_start_with("~=") {
                     self.next(2);
                     Ok(Token::OpNe)
                 } else {
@@ -191,7 +191,7 @@ impl Lex for Lexer {
                 }
             }
             b'=' => {
-                if self.test("==") {
+                if self.is_start_with("==") {
                     self.next(2);
                     Ok(Token::OPEq)
                 } else {
@@ -199,10 +199,10 @@ impl Lex for Lexer {
                 }
             }
             b'<' => {
-                if self.test("<<") {
+                if self.is_start_with("<<") {
                     self.next(2);
                     Ok(Token::OpShl)
-                } else if self.test("<=") {
+                } else if self.is_start_with("<=") {
                     self.next(2);
                     Ok(Token::OpLe)
                 } else {
@@ -210,21 +210,21 @@ impl Lex for Lexer {
                 }
             }
             b'>' => {
-                if self.test(">>") {
+                if self.is_start_with(">>") {
                     self.next(2);
                     Ok(Token::OpShr)
-                } else if self.test(">=") {
+                } else if self.is_start_with(">=") {
                     self.next(2);
                     Ok(Token::OpGe)
                 } else {
                     self.simple_token(Token::OpGt)
                 }
             }
-            b'.' if self.test("...") => {
+            b'.' if self.is_start_with("...") => {
                 self.next(3);
                 Ok(Token::VarArg)
             }
-            b'.' if self.test("..") => {
+            b'.' if self.is_start_with("..") => {
                 self.next(2);
                 Ok(Token::OpConcat)
             }
@@ -234,7 +234,7 @@ impl Lex for Lexer {
                     self.simple_token(Token::SepDot)
                 }
             b'[' => {
-                if self.test("[[") || self.test("[=") {
+                if self.is_start_with("[[") || self.is_start_with("[=") {
                     Ok(Token::String(self.scan_long_string()?))
                 } else {
                     self.simple_token(Token::SepLbrack)
@@ -458,9 +458,9 @@ impl Lexer {
     /// 跳过空白符(总是跳过注释)
     fn skip_whitespaces(&mut self) -> Result<()> {
         while let Some(ch) = self.current() {
-            if self.test("--") {
+            if self.is_start_with("--") {
                 self.skip_comment()?;
-            } else if self.test("\r\n") || self.test("\n\r") {
+            } else if self.is_start_with("\r\n") || self.is_start_with("\n\r") {
                 self.next(2);
                 self.line += 1;
             } else if is_new_line(ch) {
@@ -476,7 +476,7 @@ impl Lexer {
     }
 
     /// 判断当前源码是否以一串字符串开头
-    fn test(&self, s: &str) -> bool {
+    fn is_start_with(&self, s: &str) -> bool {
         for (i, ch) in s.bytes().enumerate() {
             if self.is_eof() {
                 return false;

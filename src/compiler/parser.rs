@@ -3,8 +3,8 @@
 use crate::compiler::ast::*;
 use crate::compiler::error::*;
 use crate::compiler::lexer::*;
-use crate::compiler::token::Token;
-use crate::number::parser::{parse_float, parse_integer};
+use crate::compiler::token::*;
+use crate::number::parser::*;
 
 /// parse gets a lexer and returns a Lua Block which is Lua AST
 pub fn parse(lexer: &mut impl Lex) -> Block {

@@ -13,6 +13,7 @@ use crate::compiler::ast::*;
 use crate::compiler::error::*;
 use crate::compiler::lexer::Line;
 use crate::compiler::token::Token;
+use crate::number::parser::int_to_float_byte;
 use crate::vm::opcode;
 
 /// 262143
@@ -47,7 +48,7 @@ struct UpValueInfo {
     index: usize,
 }
 
-
+/// Function Information Table Reference
 #[derive(Debug, Clone)]
 pub struct FnInfoRef(Rc<RefCell<FnInfo>>);
 
@@ -81,17 +82,18 @@ pub struct FnInfo {
     is_vararg: bool,
     /// For debug
     line_nums: Vec<u32>,
+    /// For debug
     line: Line,
+    /// For debug
     last_line: Line,
 }
 
-
-static mut counter: usize = 0;
+static mut COUNT: usize = 0;
 
 fn count() -> usize {
     unsafe {
-        counter += 1;
-        counter
+        COUNT += 1;
+        COUNT
     }
 }
 
@@ -109,6 +111,7 @@ impl FnInfoRef {
         ))))
     }
 }
+
 /********************** keep function information ************************/
 
 impl FnInfo {
@@ -300,7 +303,7 @@ impl FnInfo {
         // todo: understand
         let a = self.get_jump_arg_a();
         if a > 0 {
-            self.emit_jump(line, a, 0);
+            self.emit_jmp(line, a, 0);
         }
     }
 
@@ -432,7 +435,7 @@ impl FnInfo {
     // r[a] = {}
     #[inline]
     fn emit_new_table(&mut self, line: Line, a: isize, n_arr: isize, n_rec: isize) {
-        unimplemented!()
+        self.emit_ABC(line, opcode::OP_NEWTABLE, a, int_to_float_byte(n_arr), int_to_float_byte(n_rec));
     }
 
     // r[a][(c-1)*FPF+i] := r[a+i], 1 <= i <= b
@@ -501,10 +504,9 @@ impl FnInfo {
         self.emit_ABC(line, opcode::OP_SELF, a, b, c);
     }
 
-
     // pc += sBx; if (a) close all upvalues >= r[a-1]
     #[inline]
-    fn emit_jump(&mut self, line: Line, a: isize, sBx: isize) -> usize {
+    fn emit_jmp(&mut self, line: Line, a: isize, sBx: isize) -> usize {
         self.emit_AsBx(line, opcode::OP_JMP, a, sBx);
         self.instructions.len() - 1
     }
@@ -585,7 +587,7 @@ impl FnInfo {
                     _ => unreachable!()
                 }
 
-                self.emit_jump(line, 0, 1);
+                self.emit_jmp(line, 0, 1);
                 self.emit_load_bool(line, a, 0, 1);
                 self.emit_load_bool(line, a, 1, 0);
             }
@@ -680,7 +682,7 @@ impl FnInfo {
     }
 
     fn codegen_break_stat(&mut self, line: Line) -> Result<()> {
-        let pc = self.emit_jump(line, 0, 0);
+        let pc = self.emit_jmp(line, 0, 0);
         self.add_break_jump(pc)
     }
 
@@ -711,7 +713,7 @@ impl FnInfo {
 
         self.emit_test(block.last_line, reg as isize, 0);
         let a = self.get_jump_arg_a();
-        self.emit_jump(block.last_line, a, (pc_before_block - self.pc() - 1) as isize);
+        self.emit_jmp(block.last_line, a, (pc_before_block - self.pc() - 1) as isize);
         self.close_open_up_values(block.last_line);
 
         self.exit_scope()
@@ -734,12 +736,12 @@ impl FnInfo {
         self.free_register();
 
         self.emit_test(block.last_line, reg as isize, 0);
-        let pc_jmp_to_end = self.emit_jump(block.last_line, 0, 0);
+        let pc_jmp_to_end = self.emit_jmp(block.last_line, 0, 0);
 
         self.enter_scope(true);
         self.codegen_block(block)?;
         self.close_open_up_values(block.last_line);
-        self.emit_jump(block.last_line, 0, (pc_before_exp - self.pc() - 1) as isize);
+        self.emit_jmp(block.last_line, 0, (pc_before_exp - self.pc() - 1) as isize);
         self.exit_scope()?;
 
         self.fix_sbx(pc_jmp_to_end, (self.pc() - pc_jmp_to_end) as isize);
@@ -770,7 +772,7 @@ impl FnInfo {
             self.free_register();
 
             self.emit_test(0, 0, 0);
-            pc_jmp_to_next_exp = self.emit_jump(0, 0, 0) as isize;
+            pc_jmp_to_next_exp = self.emit_jmp(0, 0, 0) as isize;
 
             let block = &blocks[i];
             self.enter_scope(false);
@@ -779,7 +781,7 @@ impl FnInfo {
             self.exit_scope()?;
 
             if i < exps.len() - 1 {
-                pc_jmp_to_ends.push(self.emit_jump(block.last_line, 0, 0));
+                pc_jmp_to_ends.push(self.emit_jmp(block.last_line, 0, 0));
             } else {
                 pc_jmp_to_ends.push(pc_jmp_to_next_exp as usize);
             }
@@ -832,7 +834,7 @@ impl FnInfo {
             self.add_local_var(name.clone())?;
         }
 
-        let pc_jmp_to_tfc = self.emit_jump(line, 0, 0);
+        let pc_jmp_to_tfc = self.emit_jmp(line, 0, 0);
         self.codegen_block(&*for_in.block)?;
         self.close_open_up_values(for_in.block.last_line);
         self.fix_sbx(pc_jmp_to_tfc, self.pc() as isize - pc_jmp_to_tfc as isize);
@@ -989,7 +991,35 @@ impl FnInfo {
     }
 
     fn codegen_binop_exp(&mut self, exp1: &Exp, op: &Token, exp2: &Exp, a: isize, n: isize, line: Line) -> Result<()> {
-        unimplemented!()
+        match op {
+            Token::OpAnd | Token::OpOr => {
+                let b = self.alloc_register()? as isize;
+                self.codegen_exp(exp1, b, 1);
+                self.free_register();
+                if *op == Token::OpAnd {
+                    self.emit_test_set(line, a, b, 0);
+                } else {
+                    self.emit_test_set(line, a, b, 1);
+                }
+                let jmp_pc = self.emit_jmp(line, 0, 0);
+
+                let b = self.alloc_register()? as isize;
+                self.codegen_exp(exp2, b, 1);
+                self.free_register();
+                self.emit_move(line, a, b);
+                self.fix_sbx(jmp_pc, self.pc() as isize - jmp_pc as isize);
+            }
+
+            _ => {
+                let b = self.alloc_register()? as isize;
+                self.codegen_exp(exp1, b, 1);
+                let c= self.alloc_register()? as isize;
+                self.codegen_exp(exp2, c, 1);
+                self.emit_binary_op(line, op, a, b, c);
+                self.free_registers(2);
+            }
+        }
+        Ok(())
     }
 
     fn codegen_concat_exp(&mut self, exps: &Vec<Exp>, a: isize, n: isize, line: Line) -> Result<()> {
@@ -1007,6 +1037,17 @@ impl FnInfo {
     }
 
     fn codegen_table_constructor_exp(&mut self, fields: &Vec<Field>, a: isize, n: isize, line: Line) -> Result<()> {
+        let mut n_arr = 0;
+        for field in fields {
+            if field.key.is_none() {
+                n_arr += 1;
+            }
+        }
+
+        let mult_ret = !fields.is_empty() && is_vararg_or_fn_call(&fields.last().unwrap().val);
+
+        self.emit_new_table(line, a, n_arr, fields.len() as isize - n_arr);
+        let mut arr_idx = 0;
         unimplemented!()
     }
 
@@ -1021,7 +1062,55 @@ impl FnInfo {
     }
 
     fn codegen_fn_call_exp(&mut self, fn_call: &FnCall, a: isize, n: isize) -> Result<()> {
-        unimplemented!()
+        let n_args = self.prep_fn_call(fn_call, a)? as isize;
+        self.emit_call(fn_call.line, a, n_args, n);
+        Ok(())
+    }
+
+    fn prep_fn_call(&mut self, fn_call: &FnCall, a: isize) -> Result<usize> {
+        let mut n_args = fn_call.args.len();
+        let mut last_arg_is_vararg_or_fn_call = false;
+        self.codegen_exp(&*fn_call.prefix, a, 1);
+
+        // fixme
+        match fn_call.name {
+            Some(ref name) => {
+                match **name {
+                    Exp::String(ref s, line) => {
+                        let constant = Constant::String(s.clone());
+                        let c = 0x100 + self.constant_index(&constant) as isize;
+                        self.emit_self(line, a, a, c);
+                    }
+                    _ => {
+                        unreachable!();
+                    }
+                };
+
+            }
+            _ => {}
+        };
+
+        for (i, arg) in fn_call.args.iter().enumerate() {
+            let tmp = self.alloc_register()? as isize;
+            if i == n_args - 1 && is_vararg_or_fn_call(arg) {
+                last_arg_is_vararg_or_fn_call = true;
+                self.codegen_exp(arg, tmp, -1);
+            } else {
+                self.codegen_exp(arg, tmp, 1);
+            }
+        }
+
+        self.free_registers(n_args);
+
+        if let Some(_) = fn_call.name {
+            n_args += 1;
+        }
+
+        if last_arg_is_vararg_or_fn_call {
+            n_args -= 1;
+        }
+
+        Ok(n_args)
     }
 }
 
