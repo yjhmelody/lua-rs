@@ -408,6 +408,12 @@ impl Lexer {
         })?;
         // todo: trim string
         self.index += caps["comment"].len();
+        for ch in caps["comment"].iter() {
+            if is_new_line(*ch) {
+                self.line += 1;
+            }
+        }
+
         unsafe { Ok(String::from_utf8_unchecked(caps["string"].to_vec())) }
     }
 
@@ -525,7 +531,6 @@ impl Lexer {
             }
             _ => {}
         }
-
         // short comment: --
         while let Some(ch) = self.current() {
             self.next(1);

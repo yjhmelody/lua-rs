@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::fmt::{self, Display, Formatter};
+
 use crate::compiler::lexer::Line;
 use crate::compiler::token::Token;
 
@@ -72,6 +74,25 @@ pub enum Exp {
     /// function call is either expression or statement
     FnCall(FnCall),
 }
+
+impl Display for Block {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        unimplemented!()
+    }
+}
+
+impl Display for Stat {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        unimplemented!()
+    }
+}
+
+impl Display for Exp {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        unimplemented!()
+    }
+}
+
 
 /// Lua Function Definition
 #[derive(Debug)]

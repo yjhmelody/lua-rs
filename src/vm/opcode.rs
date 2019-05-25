@@ -197,6 +197,7 @@ const fn opcode(b_mode: OpArgMask, c_mode: OpArgMask, op_mode: OpMode, name: &'s
 }
 
 /// Lua Instruction, 32 bits
+#[derive(Debug)]
 pub struct OpCode {
     /// B arg mode
     pub b_mode: OpArgMask,

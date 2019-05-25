@@ -1,3 +1,36 @@
+//! ## Instruction Notation
+//!
+//! R(A): Register A (specified in instruction field A)
+//!
+//! R(B): Register B (specified in instruction field B)
+//!
+//! R(C): Register C (specified in instruction field C)
+//!
+//! PC: Program Counter
+//!
+//! Kst(n): Element n in the constant list
+//!
+//! Upvalue[n]: Name of upvalue with index n
+//!
+//! Gbl[sym]: Global variable indexed by symbol sym
+//!
+//! RK(B): Register B or a constant index
+//!
+//! RK(C): Register C or a constant index
+//!
+//! sBx: Signed displacement (in field sBx) for all kinds of jumps
+//!
+//! ## Instruction Summary
+//!
+//! Lua bytecode instructions are 32-bits in size. All instructions have an opcode in the first 6 bits. Instructions can have the following fields:
+//!
+//! - 'A' : 8 bits
+//! - 'B' : 9 bits
+//! - 'C' : 9 bits
+//! - 'Ax' : 26 bits ('A', 'B', and 'C' together)
+//! - 'Bx' : 18 bits ('B' and 'C' together)
+//! - 'sBx' : signed Bx
+
 #![allow(dead_code)]
 #![allow(unused_variables)]
 #![allow(unused_mut)]
@@ -371,24 +404,28 @@ impl FnInfo {
     fn emit_ABC(&mut self, line: Line, opcode: u8, a: isize, b: isize, c: isize) {
         let ins = b << 23 | c << 14 | a << 6 | opcode as isize;
         self.instructions.push(ins as u32);
+        self.line_nums.push(line as u32);
     }
 
     #[inline]
     fn emit_ABx(&mut self, line: Line, opcode: u8, a: isize, bx: isize) {
         let ins = bx << 14 | a << 6 | opcode as isize;
         self.instructions.push(ins as u32);
+        self.line_nums.push(line as u32);
     }
 
     #[inline]
     fn emit_AsBx(&mut self, line: Line, opcode: u8, a: isize, b: isize) {
         let ins = (b + MAXARG_SBX) << 14 | a << 6 | opcode as isize;
         self.instructions.push(ins as u32);
+        self.line_nums.push(line as u32);
     }
 
     #[inline]
     fn emit_Ax(&mut self, line: Line, opcode: u8, ax: isize) {
         let ins = ax << 6 | opcode as isize;
         self.instructions.push(ins as u32);
+        self.line_nums.push(line as u32);
     }
 
     // r[a] = r[b]
@@ -1030,9 +1067,9 @@ impl FnInfo {
 
             _ => {
                 let b = self.alloc_register()? as isize;
-                self.codegen_exp(exp1, b, 1);
+                self.codegen_exp(exp1, b, 1)?;
                 let c = self.alloc_register()? as isize;
-                self.codegen_exp(exp2, c, 1);
+                self.codegen_exp(exp2, c, 1)?;
                 self.emit_binary_op(line, op, a, b, c);
                 self.free_registers(2);
             }
@@ -1070,7 +1107,7 @@ impl FnInfo {
 
     fn codegen_table_access_exp(&mut self, obj: &Exp, key: &Exp, a: isize, n: isize, line: Line) -> Result<()> {
         let b = self.alloc_register()? as isize;
-        self.codegen_exp(obj, b, 1);
+        self.codegen_exp(obj, b, 1)?;
         let c = self.alloc_register()? as isize;
         self.codegen_exp(key, c, 1)?;
         self.emit_get_table(line, a, b, c);

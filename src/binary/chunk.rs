@@ -67,7 +67,7 @@ pub struct Prototype {
     /// For debug
     pub local_vars: Vec<LocalVar>,
     /// For debug
-    pub up_value_names: Vec<String>, // debug
+    pub up_value_names: Vec<String>,
 }
 
 /// Lua Up Value

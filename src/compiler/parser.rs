@@ -928,6 +928,10 @@ mod tests {
     #[test]
     fn test_parse() {
         let s = r##"
+         local g = {
+            a = 1,
+            b = {}
+        }
         -- comment
         local a = true and false or false or not true
         local b = ((1 | 2) & 3) >> 1 << 1
@@ -956,10 +960,16 @@ mod tests {
           end
         end
         "##.to_string();
+        let mut lexer = Lexer::from_iter(s.into_bytes(), "test".to_string());
+        parse_block(&mut lexer).expect("parse error");
 
-        let mut lexer = Lexer::from_iter(s.bytes(), "test".to_string());
-
-        let block = parse_block(&mut lexer);
+        let s = r##"
+         local g = {
+            a = 1,
+            b = {}
+        }"##.to_string();
+        let mut lexer = Lexer::from_iter(s.into_bytes(), "test".to_string());
+        let block = parse_block(&mut lexer).expect("parse error");
         println!("{:#?}", block);
     }
 }
