@@ -40,6 +40,7 @@ use core::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::iter;
+use std::process::id;
 use std::rc::Rc;
 
 use crate::binary::chunk::*;
@@ -65,6 +66,8 @@ const MAXARG_SBX: isize = MAXARG_BX >> 1;
 //    fn_info.to_prototype()
 //}
 
+pub type LocalVarInfoRef = Rc<RefCell<LocalVarInfo>>;
+
 /// Local Variable Information
 #[derive(Debug, Copy, Clone)]
 struct LocalVarInfo {
@@ -82,12 +85,22 @@ struct UpValueInfo {
     index: usize,
 }
 
+impl UpValueInfo {
+    pub fn new(local_var_slot: Option<usize>, up_value_index: Option<usize>, index: usize) -> Self {
+        Self {
+            local_var_slot,
+            up_value_index,
+            index,
+        }
+    }
+}
+
 /// Function Information Table Reference
 #[derive(Debug, Clone)]
 pub struct FnInfoRef(Rc<RefCell<FnInfo>>);
 
 /// Function Information Table for Lua
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FnInfo {
     constants: HashMap<Constant, usize>,
     /// Num of used regs
@@ -97,19 +110,21 @@ pub struct FnInfo {
     /// Block scope level
     scope_level: usize,
     /// Local variable of all scope
-    local_vars: Vec<HashMap<String, Rc<LocalVarInfo>>>,
+    local_vars: Vec<HashMap<String, LocalVarInfoRef>>,
     /// Record some breaks statements
     breaks: Vec<Option<Vec<usize>>>,
     /// Parents' index
-    parent_index: usize,
+//    parent_index: usize,
     /// 当前节点的索引
-    current_index: usize,
+//    current_index: usize,
     /// UpValues
     up_values: HashMap<String, UpValueInfo>,
     /// Store Lua instructions
     instructions: Vec<u32>,
     /// Nested Functions
     sub_fns: Vec<FnInfoRef>,
+    /// parent function
+    parent: Option<FnInfoRef>,
     /// The function's param num
     num_params: usize,
     /// Has `...`
@@ -133,12 +148,12 @@ fn count() -> usize {
 
 impl FnInfoRef {
     #[inline]
-    fn new(parent_index: usize, current_index: usize, par_list: ParList, line: Line, last_line: Line) -> Self {
+    fn new(parent: Option<FnInfoRef>, par_list: ParList, line: Line, last_line: Line) -> Self {
         let is_vararg = par_list.is_vararg;
         let num_params = par_list.params.len();
+
         Self(Rc::new(RefCell::new(FnInfo::new(
-            parent_index,
-            current_index,
+            parent,
             par_list,
             line,
             last_line,
@@ -151,9 +166,11 @@ impl FnInfoRef {
 impl FnInfo {
     /// Create a FnInfo structure
     #[inline]
-    pub fn new(parent_index: usize, current_index: usize, par_list: ParList, line: Line, last_line: Line) -> Self {
+    pub fn new(parent: Option<FnInfoRef>, par_list: ParList, line: Line, last_line: Line) -> Self {
         let is_vararg = par_list.is_vararg;
         let num_params = par_list.params.len();
+//        let parent_index = 0;
+//        let current_index = 0;
         Self {
             constants: HashMap::new(),
             used_regs: 0,
@@ -161,11 +178,12 @@ impl FnInfo {
             scope_level: 0,
             local_vars: Vec::new(),
             breaks: Vec::new(),
-            parent_index,
-            current_index,
+//            parent_index,
+//            current_index,
             up_values: HashMap::new(),
             instructions: Vec::new(),
             sub_fns: Vec::new(),
+            parent: None,
             num_params,
             is_vararg,
             line_nums: Vec::new(),
@@ -175,14 +193,15 @@ impl FnInfo {
     }
 
     fn find_fn_info_by_index(mut fn_info: Rc<RefCell<FnInfo>>, index: usize) -> Option<Rc<RefCell<FnInfo>>> {
-        if fn_info.borrow_mut().current_index == index {
-            Some(fn_info)
-        } else {
-            for sub_fn in fn_info.borrow_mut().sub_fns.iter() {
-                return Self::find_fn_info_by_index(sub_fn.0.clone(), index);
-            }
-            None
-        }
+        unimplemented!();
+//        if fn_info.borrow_mut().current_index == index {
+//            Some(fn_info)
+//        } else {
+//            for sub_fn in fn_info.borrow_mut().sub_fns.iter() {
+//                return Self::find_fn_info_by_index(sub_fn.0.clone(), index);
+//            }
+//            None
+//        }
     }
 
     fn constant_index(&mut self, k: &Constant) -> usize {
@@ -227,12 +246,12 @@ impl FnInfo {
     }
 
     #[inline]
-    fn get_current_scope(&self) -> &HashMap<String, Rc<LocalVarInfo>> {
+    fn get_current_scope(&self) -> &HashMap<String, LocalVarInfoRef> {
         &self.local_vars[self.scope_level]
     }
 
     #[inline]
-    fn get_current_scope_mut(&mut self) -> &mut HashMap<String, Rc<LocalVarInfo>> {
+    fn get_current_scope_mut(&mut self) -> &mut HashMap<String, LocalVarInfoRef> {
         &mut self.local_vars[self.scope_level]
     }
 
@@ -270,13 +289,13 @@ impl FnInfo {
         let mut has_captured_local_var = false;
         let mut min_local_var_slot = self.max_regs;
         let local_vars = self.get_current_scope_mut();
-        local_vars.clone().iter().for_each(|(k, local_var)| {
-            if local_var.is_captured {
+        local_vars.clone().iter().for_each(|(k, mut local_var)| {
+            if local_var.borrow_mut().is_captured {
                 has_captured_local_var = true;
             }
             // todo: fix it
-            if local_var.slot < min_local_var_slot {
-                min_local_var_slot = local_var.slot;
+            if local_var.borrow_mut().slot < min_local_var_slot {
+                min_local_var_slot = local_var.borrow_mut().slot;
             }
         });
 
@@ -289,13 +308,13 @@ impl FnInfo {
 
     /// Add a local variable and return register index
     fn add_local_var(&mut self, name: String) -> Result<usize> {
-        let new_var = Rc::new(LocalVarInfo {
+        let mut new_var = Rc::new(RefCell::new(LocalVarInfo {
             scope_level: self.scope_level,
             slot: self.alloc_register()?,
             is_captured: false,
-        });
+        }));
 
-        let slot = new_var.slot;
+        let slot = new_var.borrow_mut().slot;
         self.local_vars[self.scope_level].insert(name, new_var);
         Ok(slot)
     }
@@ -303,7 +322,7 @@ impl FnInfo {
     /// Get name's register number
     fn local_var_slot(&self, name: &String) -> Result<usize> {
         match self.get_current_scope().get(name) {
-            Some(local_var) => Ok(local_var.slot),
+            Some(mut local_var) => Ok(local_var.borrow_mut().slot),
             _ => Err(Error::IllegalRegister),
         }
     }
@@ -323,7 +342,6 @@ impl FnInfo {
                     arr.push(pc);
                     return Ok(());
                 }
-
                 None => {}
             }
         }
@@ -331,13 +349,43 @@ impl FnInfo {
     }
 
     /// Get up value's index
-    fn up_value_index(&mut self, name: &String) -> Result<usize> {
+    fn up_value_index(&mut self, name: &String) -> Option<usize> {
         // todo: refactor scope lookup
         if let Some(up_value) = self.up_values.get(name) {
-            Ok(up_value.index)
-        } else {
-            unimplemented!()
+            return Some(up_value.index);
+            // fixme
+        } else if let Some(ref mut parent) = self.parent.clone() {
+            match parent.0.borrow_mut().get_local_var(name) {
+                Some(local_var) => {
+                    let idx = self.up_values.len();
+                    self.up_values.insert(name.clone(), UpValueInfo::new(Some(local_var.borrow_mut().slot), None, idx));
+                    local_var.borrow_mut().is_captured = true;
+                    return Some(idx);
+                }
+
+                None => {}
+            }
+            match parent.0.borrow_mut().up_value_index(name) {
+                Some(upval_idx) => {
+                    let idx = self.up_values.len();
+                    self.up_values.insert(name.clone(), UpValueInfo::new(None, Some(upval_idx), idx));
+                    return Some(idx);
+                }
+                None => {}
+            }
         }
+
+        None
+    }
+
+    fn get_local_var(&mut self, name: &String) -> Option<&mut LocalVarInfoRef> {
+        for map in self.local_vars.iter_mut() {
+            match map.get_mut(name) {
+                Some(local_var) => { return Some(local_var); }
+                None => {}
+            }
+        }
+        None
     }
 
     fn close_open_up_values(&mut self, line: Line) {
@@ -909,7 +957,7 @@ impl FnInfo {
             } else {
                 match name_exp {
                     Exp::Name(name, line) => {
-                        if self.local_var_slot(name).is_err() && self.up_value_index(name).is_err() {
+                        if self.local_var_slot(name).is_err() && self.up_value_index(name).is_none() {
                             // global variable
                             k_regs[i] = -1;
                             if self.constant_index(&Constant::String(name.clone())) > 0xFF {
@@ -1022,7 +1070,7 @@ impl FnInfo {
         if let Ok(reg) = reg {
             self.emit_move(line, a, reg as isize);
             Ok(())
-        } else if let Ok(idx) = self.up_value_index(name) {
+        } else if let Some(idx) = self.up_value_index(name) {
             self.emit_get_up_value(line, a, idx as isize);
             Ok(())
         } else {
@@ -1033,7 +1081,8 @@ impl FnInfo {
 
     // f[a] := function(args) body end
     fn codegen_fn_def_exp(&mut self, fn_def: &FnDef, a: isize) -> Result<()> {
-        let sub_fn = Self::new(self.current_index, count(), fn_def.par_list.clone(), fn_def.line, fn_def.last_line);
+        let parent = FnInfoRef(Rc::new(RefCell::new(self.clone())));
+        let sub_fn = Self::new(Some(parent), fn_def.par_list.clone(), fn_def.line, fn_def.last_line);
         let mut sub_fn = FnInfoRef(Rc::new(RefCell::new(sub_fn)));
         self.sub_fns.push(sub_fn.clone());
 
