@@ -36,6 +36,7 @@
 #![allow(unused_mut)]
 #![allow(non_snake_case)]
 
+use core::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::iter;
@@ -173,11 +174,11 @@ impl FnInfo {
         }
     }
 
-    fn find_fn_info_by_index(fn_info: Rc<RefCell<FnInfo>>, index: usize) -> Option<Rc<RefCell<FnInfo>>> {
-        if fn_info.borrow().current_index == index {
+    fn find_fn_info_by_index(mut fn_info: Rc<RefCell<FnInfo>>, index: usize) -> Option<Rc<RefCell<FnInfo>>> {
+        if fn_info.borrow_mut().current_index == index {
             Some(fn_info)
         } else {
-            for sub_fn in fn_info.borrow().sub_fns.iter() {
+            for sub_fn in fn_info.borrow_mut().sub_fns.iter() {
                 return Self::find_fn_info_by_index(sub_fn.0.clone(), index);
             }
             None
@@ -249,13 +250,20 @@ impl FnInfo {
     /// Exit current scope
     #[inline]
     fn exit_scope(&mut self) -> Result<()> {
-        let jump = self.breaks.pop().ok_or(Error::NoMoreScopes)?;
-        unimplemented!();
-//        self.scope_level -= 1;
-//        match self.local_vars.pop() {
-//            Some(vars) => Ok(()),
-//            None => Err(Error::NoMoreScopes)
-//        }
+        let pending_break_jmps = self.breaks.pop().ok_or(Error::NoMoreScopes)?.unwrap();
+
+        let a = self.get_jump_arg_a() as usize;
+        for pc in pending_break_jmps {
+            let sBx = self.pc() - pc;
+            let i = (sBx + MAXARG_SBX as usize) << 14 | a << 6 | opcode::OP_JMP as usize;
+            self.instructions[pc] = i as u32;
+        }
+
+        self.scope_level -= 1;
+        match self.local_vars.pop() {
+            Some(vars) => Ok(()),
+            None => Err(Error::NoMoreScopes)
+        }
     }
 
     fn get_jump_arg_a(&mut self) -> isize {
@@ -560,12 +568,14 @@ impl FnInfo {
         self.emit_ABC(line, opcode::OP_TEST, a, b, c);
     }
 
+    // R(A)-=R(A+2); pc+=sBx
     #[inline]
     fn emit_for_prep(&mut self, line: Line, a: isize, sBx: isize) -> isize {
         self.emit_AsBx(line, opcode::OP_FORPREP, a, sBx);
         self.instructions.len() as isize - 1
     }
 
+    // R(A)+=R(A+2); if R(A) <?= R(A+1) then { pc+=sBx; R(A+3)=R(A) }
     #[inline]
     fn emit_for_loop(&mut self, line: Line, a: isize, sBx: isize) -> isize {
         self.emit_AsBx(line, opcode::OP_FORLOOP, a, sBx);
@@ -598,8 +608,8 @@ impl FnInfo {
     }
 
     // r[a] = rk[b] op rk[c]
-    // arith & bitwise & relational
     fn emit_binary_op(&mut self, line: Line, op: &Token, a: isize, b: isize, c: isize) {
+        // arith & bitwise & relational
         match op {
             Token::OpAdd => self.emit_ABC(line, opcode::OP_ADD, a, b, c),
             Token::OpMinus => self.emit_ABC(line, opcode::OP_SUB, a, b, c),
@@ -623,7 +633,6 @@ impl FnInfo {
                     Token::OpGe => self.emit_ABC(line, opcode::OP_LE, 1, c, b),
                     _ => unreachable!()
                 }
-
                 self.emit_jmp(line, 0, 1);
                 self.emit_load_bool(line, a, 0, 1);
                 self.emit_load_bool(line, a, 1, 0);
@@ -731,7 +740,6 @@ impl FnInfo {
         self.exit_scope()
     }
 
-
     /*
             ______________
            |  false? jmp  |
@@ -804,11 +812,12 @@ impl FnInfo {
                 self.fix_sbx(pc_jmp_to_next_exp as usize, self.pc() as isize - pc_jmp_to_next_exp as isize);
             }
 
-            let reg = self.alloc_register()?;
-            self.codegen_exp(exp, reg as isize, 1)?;
+            let reg = self.alloc_register()? as isize;
+            self.codegen_exp(exp, reg, 1)?;
             self.free_register();
 
-            self.emit_test(0, 0, 0);
+            self.emit_test(0, reg, 0);
+            // fixme
             pc_jmp_to_next_exp = self.emit_jmp(0, 0, 0) as isize;
 
             let block = &blocks[i];
@@ -840,9 +849,11 @@ impl FnInfo {
             "(for limit)".to_string(),
             "(for step)".to_string(),
         ];
+
+        self.enter_scope(true);
+
         self.codegen_local_var_decl_stat_borrow(&names, &vec![&for_num.init, &for_num.limit, &for_num.step])?;
         self.add_local_var(for_num.name.clone())?;
-
 
         let a = self.used_regs as isize - 4;
         let pc_for_prep = self.emit_for_prep(for_num.line_of_do, a, 0);
@@ -896,7 +907,18 @@ impl FnInfo {
                 k_regs[i] = self.alloc_register()? as isize;
                 self.codegen_exp(&*key_exp, k_regs[i], 1)?;
             } else {
-                unimplemented!()
+                match name_exp {
+                    Exp::Name(name, line) => {
+                        if self.local_var_slot(name).is_err() && self.up_value_index(name).is_err() {
+                            // global variable
+                            k_regs[i] = -1;
+                            if self.constant_index(&Constant::String(name.clone())) > 0xFF {
+                                k_regs[i] = self.alloc_register()? as isize;
+                            }
+                        }
+                    }
+                    _ => unreachable!(),
+                }
             }
         }
 
@@ -988,7 +1010,7 @@ impl FnInfo {
             Exp::Unop(op, exp, line) => self.codegen_unop_exp(op, exp, a, *line),
             Exp::Binop(exp1, op, exp2, line) => self.codegen_binop_exp(&*exp1, op, &*exp2, a, n, *line),
             Exp::Concat(exps, line) => self.codegen_concat_exp(exps, a, n, *line),
-            Exp::TableConstructor(fields, line) => self.codegen_table_constructor_exp(fields, a, n, *line),
+            Exp::TableConstructor(fields, line) => self.codegen_table_constructor_exp(fields, a, *line),
             Exp::TableAccess(obj, key, line) => self.codegen_table_access_exp(&*obj, &*key, a, n, *line),
             Exp::FnDef(fn_def) => self.codegen_fn_def_exp(fn_def, a),
             Exp::FnCall(fn_call) => self.codegen_fn_call_exp(fn_call, a, n),
@@ -1090,7 +1112,8 @@ impl FnInfo {
         Ok(())
     }
 
-    fn codegen_table_constructor_exp(&mut self, fields: &Vec<Field>, a: isize, n: isize, line: Line) -> Result<()> {
+    fn codegen_table_constructor_exp(&mut self, fields: &Vec<Field>, a: isize, line: Line) -> Result<()> {
+        // 有多少个是没有下标的
         let mut n_arr = 0;
         for field in fields {
             if field.key.is_none() {
@@ -1102,7 +1125,46 @@ impl FnInfo {
 
         self.emit_new_table(line, a, n_arr, fields.len() as isize - n_arr);
         let mut arr_idx = 0;
-        unimplemented!()
+
+        for (i, field) in fields.iter().enumerate() {
+            // 先处理数组
+            match field.key {
+                Some(ref key) => {
+                    let b = self.alloc_register()? as isize;
+                    self.codegen_exp(key, b, 1);
+                    let c = self.alloc_register()? as isize;
+                    self.codegen_exp(&field.val, c, 1);
+
+                    self.free_registers(2);
+
+                    let line = 0;
+                    self.emit_set_table(line, a, b, c);
+                }
+
+                None => {
+                    arr_idx += 1;
+                    let tmp = self.alloc_register()? as isize;
+                    if i == fields.len() - 1 && mult_ret {
+                        self.codegen_exp(&field.val, tmp, -1);
+                    } else {
+                        self.codegen_exp(&field.val, tmp, 1);
+                    }
+
+                    // LFIELDS_PER_FLUSH
+                    if arr_idx % 50 == 0 || arr_idx == fields.len() {
+                        let n = if arr_idx % 50 == 0 {
+                            50
+                        } else {
+                            arr_idx % 50
+                        };
+
+                        let c = (arr_idx - 1) / 50 + 1;
+                        self.free_registers(n);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn codegen_table_access_exp(&mut self, obj: &Exp, key: &Exp, a: isize, n: isize, line: Line) -> Result<()> {
