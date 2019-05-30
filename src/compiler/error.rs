@@ -3,8 +3,6 @@ use std::result;
 
 use crate::compiler::lexer::Line;
 
-// todo: better error reports
-
 /// Wrapped for parsing time errors
 pub type Result<T> = result::Result<T, Error>;
 

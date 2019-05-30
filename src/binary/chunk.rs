@@ -70,6 +70,12 @@ pub struct Prototype {
     pub up_value_names: Vec<String>,
 }
 
+impl Prototype {
+    fn to_bytes(self) -> Vec<u8> {
+        unimplemented!()
+    }
+}
+
 /// Lua Up Value
 #[derive(Debug, Copy, Clone)]
 pub struct UpValue {

@@ -236,6 +236,27 @@ fn _parse_for_num_stat(lexer: &mut impl Lex, line_of_for: Line, var_name: String
     Ok(Stat::ForNum(ForNum::new(var_name, init_exp, limit_exp, step_exp, block, line_of_for, line_of_do)))
 }
 
+fn _parse_for_in_stat(lexer: &mut impl Lex, name: String) -> Result<Stat> {
+    let name_list = _parse_name_list(lexer, name)?;
+    match lexer.next_token() {
+        Ok(Token::KwIn) => {
+            let exp_list = parse_exp_list(lexer)?;
+            let line_of_do = match lexer.next_token() {
+                Ok(Token::KwDo) => lexer.current_line(),
+                _ => {
+                    return Err(Error::IllegalStat { line: lexer.current_line() });
+                }
+            };
+            let block = Box::new(parse_block(lexer)?);
+            match lexer.next_token() {
+                Ok(Token::KwEnd) => Ok(Stat::ForIn(ForIn::new(name_list, exp_list, block), line_of_do)),
+                _ => Err(Error::IllegalStat { line: lexer.current_line() }),
+            }
+        }
+        _ => Err(Error::IllegalStat { line: lexer.current_line() }),
+    }
+}
+
 fn parse_local_assign_or_fn_def_stat(lexer: &mut impl Lex) -> Result<Stat> {
     lexer.skip_next_token();
     match lexer.look_ahead() {
@@ -332,27 +353,6 @@ fn _parse_var_list(lexer: &mut impl Lex, var0: Exp) -> Result<Vec<Exp>> {
         var_list.push(exp);
     }
     Ok(var_list)
-}
-
-fn _parse_for_in_stat(lexer: &mut impl Lex, name: String) -> Result<Stat> {
-    let name_list = _parse_name_list(lexer, name)?;
-    match lexer.next_token() {
-        Ok(Token::KwIn) => {
-            let exp_list = parse_exp_list(lexer)?;
-            let line_of_do = match lexer.next_token() {
-                Ok(Token::KwDo) => lexer.current_line(),
-                _ => {
-                    return Err(Error::IllegalStat { line: lexer.current_line() });
-                }
-            };
-            let block = Box::new(parse_block(lexer)?);
-            match lexer.next_token() {
-                Ok(Token::KwEnd) => Ok(Stat::ForIn(ForIn::new(name_list, exp_list, block), line_of_do)),
-                _ => Err(Error::IllegalStat { line: lexer.current_line() }),
-            }
-        }
-        _ => Err(Error::IllegalStat { line: lexer.current_line() }),
-    }
 }
 
 fn _parse_name_list(lexer: &mut impl Lex, name0: String) -> Result<Vec<String>> {
@@ -964,12 +964,12 @@ mod tests {
         parse_block(&mut lexer).expect("parse error");
 
         let s = r##"
-         local g = {
+        local g = {
             a = 1,
             b = {}
         }"##.to_string();
         let mut lexer = Lexer::from_iter(s.into_bytes(), "test".to_string());
         let block = parse_block(&mut lexer).expect("parse error");
-        println!("{:#?}", block);
+//        println!("{:#?}", block);
     }
 }
