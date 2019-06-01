@@ -75,23 +75,23 @@ pub enum Exp {
     FnCall(FnCall),
 }
 
-impl Display for Block {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        unimplemented!()
-    }
-}
-
-impl Display for Stat {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        unimplemented!()
-    }
-}
-
-impl Display for Exp {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        unimplemented!()
-    }
-}
+//impl Display for Block {
+//    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+//        unimplemented!()
+//    }
+//}
+//
+//impl Display for Stat {
+//    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+//        unimplemented!()
+//    }
+//}
+//
+//impl Display for Exp {
+//    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+//        unimplemented!()
+//    }
+//}
 
 
 /// Lua Function Definition

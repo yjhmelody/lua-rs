@@ -56,13 +56,16 @@ const MAXARG_BX: isize = (1 << 18) - 1;
 const MAXARG_SBX: isize = MAXARG_BX >> 1;
 
 
-pub fn gen_prototype(block: Box<Block>) -> Rc<Prototype> {
+pub fn gen_prototype(block: Box<Block>) -> Result<Rc<Prototype>> {
     let last_line = block.last_line;
     let fn_def = FnDef::new(ParList::default(), block, 0, last_line);
     let mut fn_info = FnInfo::new(None, ParList::default(), 0, last_line);
-    fn_info.add_local_var("_ENV".to_string(), 0);
-    fn_info.codegen_fn_def_exp(&fn_def, 0);
-    fn_info.to_prototype()
+    fn_info.add_local_var("_ENV".to_string(), 0)?;
+    fn_info.codegen_fn_def_exp(&fn_def, 0)?;
+
+    Ok(
+        fn_info.to_prototype()
+    )
 }
 
 /// Local Variable Information Reference
@@ -70,7 +73,7 @@ pub type LocalVarInfoRef = Rc<RefCell<LocalVarInfo>>;
 
 /// Local Variable Information
 #[derive(Debug, Copy, Clone)]
-struct LocalVarInfo {
+pub struct LocalVarInfo {
     scope_level: usize,
     slot: usize,
     is_captured: bool,
@@ -198,7 +201,7 @@ impl FnInfo {
             up_values: HashMap::new(),
             instructions: Vec::new(),
             sub_fns: Vec::new(),
-            parent: None,
+            parent,
             num_params,
             is_vararg,
             line_nums: Vec::new(),
@@ -262,12 +265,12 @@ impl FnInfo {
 
     #[inline]
     fn get_current_scope(&self) -> &HashMap<String, LocalVarInfoRef> {
-        &self.local_vars[self.scope_level]
+        &self.local_vars[self.scope_level - 1]
     }
 
     #[inline]
     fn get_current_scope_mut(&mut self) -> &mut HashMap<String, LocalVarInfoRef> {
-        &mut self.local_vars[self.scope_level]
+        &mut self.local_vars[self.scope_level - 1]
     }
 
     /// Create a new scope for vars, true for breakable
@@ -284,13 +287,15 @@ impl FnInfo {
     /// Exit current scope
     #[inline]
     fn exit_scope(&mut self) -> Result<()> {
-        let pending_break_jmps = self.breaks.pop().ok_or(Error::NoMoreScopes)?.unwrap();
-
+        let pending_break_jmps = self.breaks.pop().ok_or(Error::NoMoreScopes)?;
         let a = self.get_jump_arg_a() as usize;
-        for pc in pending_break_jmps {
-            let sBx = self.pc() - pc;
-            let i = (sBx + MAXARG_SBX as usize) << 14 | a << 6 | opcode::OP_JMP as usize;
-            self.instructions[pc] = i as u32;
+
+        if let Some(pending_break_jmps) = pending_break_jmps {
+            for pc in pending_break_jmps {
+                let sBx = self.pc() - pc;
+                let i = (sBx + MAXARG_SBX as usize) << 14 | a << 6 | opcode::OP_JMP as usize;
+                self.instructions[pc] = i as u32;
+            }
         }
 
         self.scope_level -= 1;
@@ -341,10 +346,13 @@ impl FnInfo {
 
     /// Get name's register number
     fn local_var_slot(&self, name: &String) -> Result<usize> {
-        match self.get_current_scope().get(name) {
-            Some(mut local_var) => Ok(local_var.borrow_mut().slot),
-            _ => Err(Error::IllegalRegister),
+        for local_var in self.local_vars.iter() {
+            match local_var.get(name) {
+                Some(mut local_var) => { return Ok(local_var.borrow_mut().slot) },
+                _ => {},
+            }
         }
+        Err(Error::IllegalRegister)
     }
 
     /// Remove a variable from current scope
@@ -370,11 +378,12 @@ impl FnInfo {
 
     /// Get up value's index
     fn up_value_index(&mut self, name: &String) -> Option<usize> {
+        // 找出如 _ENV 的upvalue 会一直在外围函数查询
         // todo: refactor scope lookup
         if let Some(up_value) = self.up_values.get(name) {
             return Some(up_value.index);
             // fixme
-        } else if let Some(ref mut parent) = self.parent.clone() {
+        } else if let Some(ref mut parent) = self.parent {
             match parent.0.borrow_mut().get_local_var(name) {
                 Some(local_var) => {
                     let idx = self.up_values.len();
@@ -702,6 +711,7 @@ impl FnInfo {
             Token::OpPow => self.emit_ABC(line, opcode::OP_POW, a, b, c),
             Token::OpDiv => self.emit_ABC(line, opcode::OP_DIV, a, b, c),
             Token::OpIDiv => self.emit_ABC(line, opcode::OP_IDIV, a, b, c),
+            Token::OpBitOr => self.emit_ABC(line, opcode::OP_BOR, a, b, c),
             Token::OpBitAnd => self.emit_ABC(line, opcode::OP_BAND, a, b, c),
             Token::OpWave => self.emit_ABC(line, opcode::OP_BXOR, a, b, c),
             Token::OpShl => self.emit_ABC(line, opcode::OP_SHL, a, b, c),
@@ -748,7 +758,8 @@ impl FnInfo {
         for stat in &block.stats {
             self.codegen_stat(stat)?;
         }
-        self.codegen_ret_stat(&block.ret_exps, block.last_line)
+        let res = self.codegen_ret_stat(&block.ret_exps, block.last_line);
+        return res;
     }
 
     fn codegen_stat(&mut self, stat: &Stat) -> Result<()> {
@@ -933,8 +944,6 @@ impl FnInfo {
             "(for step)".to_string(),
         ];
 
-        self.enter_scope(true);
-
         self.codegen_local_var_decl_stat_borrow(&names, &vec![&for_num.init, &for_num.limit, &for_num.step], for_num.line_of_do)?;
         self.add_local_var(for_num.name.clone(), self.pc() + 2)?;
 
@@ -1008,7 +1017,6 @@ impl FnInfo {
                 }
             }
         }
-
         for i in 0..names.len() {
             v_regs[i] = (self.used_regs + i) as isize;
         }
@@ -1017,9 +1025,9 @@ impl FnInfo {
             for (i, exp) in vals.iter().enumerate() {
                 let a = self.alloc_register()? as isize;
                 if i >= names.len() && i == vals.len() - 1 && is_vararg_or_fn_call(exp) {
-                    self.codegen_exp(exp, a, 0);
+                    self.codegen_exp(exp, a, 0)?;
                 } else {
-                    self.codegen_exp(exp, a, 1);
+                    self.codegen_exp(exp, a, 1)?;
                 }
             }
         } else {
@@ -1030,10 +1038,10 @@ impl FnInfo {
                     mult_ret = true;
 
                     let n = names.len() - vals.len() + 1;
-                    self.codegen_exp(exp, a, n as isize);
-                    self.alloc_registers(n - 1);
+                    self.codegen_exp(exp, a, n as isize)?;
+                    self.alloc_registers(n - 1)?;
                 } else {
-                    self.codegen_exp(exp, a, 1);
+                    self.codegen_exp(exp, a, 1)?;
                 }
             }
 
@@ -1043,7 +1051,6 @@ impl FnInfo {
                 self.emit_load_nil(line, a, n as isize);
             }
         }
-
         let last_line = line;
         for (i, exp) in names.iter().enumerate() {
             match exp {
@@ -1060,6 +1067,7 @@ impl FnInfo {
                             self.emit_set_table(last_line, a as isize, k_regs[i], v_regs[i]);
                         }
                     } else {
+                        dbg!();
                         let a = self.up_value_index(&"_ENV".to_string())
                             .ok_or(Error::NotUpValue)? as isize;
                         if k_regs[i] < 0 {
@@ -1123,6 +1131,7 @@ impl FnInfo {
                 self.add_local_var(name.clone(), start_pc)?;
             }
         }
+        dbg!();
 
         Ok(())
     }
@@ -1177,7 +1186,7 @@ impl FnInfo {
 /********************** expression code generation ***********************/
 
 impl FnInfo {
-    fn codegen_exp(&mut self, exp: &Exp, a: isize, n: isize) -> Result<()> {
+    pub fn codegen_exp(&mut self, exp: &Exp, a: isize, n: isize) -> Result<()> {
         match exp {
             Exp::Nil(line) => {
                 self.emit_load_nil(*line, a, n);
@@ -1217,6 +1226,7 @@ impl FnInfo {
     }
 
     fn codegen_name_exp(&mut self, name: &String, a: isize, n: isize, line: Line) -> Result<()> {
+
         let reg = self.local_var_slot(name);
         if let Ok(reg) = reg {
             self.emit_move(line, a, reg as isize);
@@ -1240,9 +1250,7 @@ impl FnInfo {
         for param in &fn_def.par_list.params {
             sub_fn.0.borrow_mut().add_local_var(param.clone(), 0)?;
         }
-
         self.codegen_block(&*fn_def.block)?;
-        sub_fn.0.borrow_mut().exit_scope()?;
         sub_fn.0.borrow_mut().emit_return(fn_def.block.last_line, 0, 0);
 
         let bx = self.sub_fns.len() - 1;
@@ -1331,9 +1339,9 @@ impl FnInfo {
             match field.key {
                 Some(ref key) => {
                     let b = self.alloc_register()? as isize;
-                    self.codegen_exp(key, b, 1);
+                    self.codegen_exp(key, b, 1)?;
                     let c = self.alloc_register()? as isize;
-                    self.codegen_exp(&field.val, c, 1);
+                    self.codegen_exp(&field.val, c, 1)?;
 
                     self.free_registers(2);
 
@@ -1345,9 +1353,9 @@ impl FnInfo {
                     arr_idx += 1;
                     let tmp = self.alloc_register()? as isize;
                     if i == fields.len() - 1 && mult_ret {
-                        self.codegen_exp(&field.val, tmp, -1);
+                        self.codegen_exp(&field.val, tmp, -1)?;
                     } else {
-                        self.codegen_exp(&field.val, tmp, 1);
+                        self.codegen_exp(&field.val, tmp, 1)?;
                     }
 
                     // LFIELDS_PER_FLUSH
@@ -1368,6 +1376,7 @@ impl FnInfo {
     }
 
     fn codegen_table_access_exp(&mut self, obj: &Exp, key: &Exp, a: isize, n: isize, line: Line) -> Result<()> {
+        let old_Regs = self.used_regs;
         let b = self.alloc_register()? as isize;
         self.codegen_exp(obj, b, 1)?;
         let c = self.alloc_register()? as isize;
@@ -1446,22 +1455,25 @@ mod tests {
     #[test]
     fn test_codegen() {
         let s = r##"
-        a = 1
-        local b = 2
 
-        function foo()
-            print "hello"
+        package.preload.mymod = function(modname)
+          local loader = function(modname, extra)
+            print("loading")
+          end
+          return loader, ""
         end
 
-        for i = 1, 10, 1 do
-            print(i)
-        end
+        co = function () print("hello") end
 
-        for i = 1, 10, 1 do
-            print(i)
+        function hello()
+          function world()
+          end
         end
-
         "##.to_string();
+
+//        let s  = r##"
+//        local a = 1;
+//        "##.to_string();
         let mut lexer = Lexer::from_iter(s.into_bytes(), "test".to_string());
         let block = parse_block(&mut lexer).expect("parse error");
         let proto = gen_prototype(Box::new(block));
