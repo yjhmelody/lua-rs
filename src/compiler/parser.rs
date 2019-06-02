@@ -358,6 +358,7 @@ fn _parse_var_list(lexer: &mut impl Lex, var0: Exp) -> Result<Vec<Exp>> {
 fn _parse_name_list(lexer: &mut impl Lex, name0: String) -> Result<Vec<String>> {
     let mut name_list = vec![name0];
     while let Ok(Token::SepComma) = lexer.look_ahead() {
+        lexer.skip_next_token();
         let name = lexer.next_ident()?;
         name_list.push(name);
     }
@@ -628,6 +629,7 @@ fn parse_table_constructor_exp(lexer: &mut impl Lex) -> Result<Exp> {
     if !lexer.check_next_token(Token::SepLcurly) {
         return Err(Error::IllegalExpression { line: lexer.current_line() });
     }
+    let line = lexer.current_line();
     // [fieldlist]
     let fields = _parse_field_list(lexer)?;
 
@@ -636,8 +638,7 @@ fn parse_table_constructor_exp(lexer: &mut impl Lex) -> Result<Exp> {
         return Err(Error::IllegalExpression { line: lexer.current_line() });
     }
 
-    let last_line = lexer.current_line();
-    Ok(Exp::TableConstructor(fields, last_line))
+    Ok(Exp::TableConstructor(fields, line))
 }
 
 fn parse_fn_def_exp(lexer: &mut impl Lex) -> Result<Exp> {

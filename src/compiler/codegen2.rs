@@ -60,7 +60,12 @@ pub fn gen_prototype(block: Box<Block>) -> Result<Rc<Prototype>> {
     let last_line = block.last_line;
     let fn_def = FnDef::new(ParList::default(), block, 0, last_line);
     let mut fn_info = FnInfo::new(None, ParList::default(), 0, last_line);
-    fn_info.add_local_var("_ENV".to_string(), 0)?;
+//    fn_info.add_local_var("_ENV".to_string(), 0)?;
+    fn_info.up_values.insert(
+        "_ENV".to_string(),
+        UpValueInfo::new(Some(0), Some(0), 0),
+    );
+
     fn_info.codegen_fn_def_exp(&fn_def, 0)?;
 
     Ok(fn_info.to_prototype())
@@ -192,7 +197,7 @@ impl FnInfo {
             used_regs: 0,
             max_regs: 0,
             scope_level: 0,
-            local_vars: Vec::new(),
+            local_vars: vec![HashMap::new()],
             breaks: Vec::new(),
 //            parent_index,
 //            current_index,
@@ -208,17 +213,6 @@ impl FnInfo {
         }
     }
 
-    fn find_fn_info_by_index(mut fn_info: Rc<RefCell<FnInfo>>, index: usize) -> Option<Rc<RefCell<FnInfo>>> {
-        unimplemented!();
-//        if fn_info.borrow_mut().current_index == index {
-//            Some(fn_info)
-//        } else {
-//            for sub_fn in fn_info.borrow_mut().sub_fns.iter() {
-//                return Self::find_fn_info_by_index(sub_fn.0.clone(), index);
-//            }
-//            None
-//        }
-    }
 
     fn constant_index(&mut self, k: &Constant) -> usize {
         match self.constants.get(k) {
@@ -335,10 +329,10 @@ impl FnInfo {
         }));
         let slot = new_var.borrow_mut().slot;
         if self.local_vars.len() <= self.scope_level {
-            self.local_vars.resize(self.local_vars.len() + 2, HashMap::new());
+            self.local_vars.resize(self.local_vars.len() * 2, HashMap::new());
         }
-        self.local_vars[self.scope_level].insert(name, new_var);
 
+        self.local_vars[self.scope_level].insert(name, new_var);
         Ok(slot)
     }
 
@@ -455,6 +449,7 @@ impl FnInfo {
                 })
             }
         }
+
         res
     }
 
@@ -744,7 +739,7 @@ impl FnInfo {
         // clear sBx Op
         ins = ins << 18 >> 18;
         // reset sBx op
-        ins = ins | (sBx as u32 + MAXARG_SBX as u32) << 14;
+        ins = ins | ((sBx + MAXARG_SBX) as u32) << 14;
         self.instructions[pc] = ins;
     }
 }
@@ -984,9 +979,6 @@ impl FnInfo {
         self.exit_scope()
     }
 
-    fn remove_tail_nils(exps: &Vec<Exp>) -> Result<Vec<Exp>> {
-        unimplemented!()
-    }
 
     fn codegen_assign_stat(&mut self, names: &Vec<Exp>, vals: &Vec<Exp>, line: Line) -> Result<()> {
         let old_regs = self.used_regs;
@@ -1065,7 +1057,6 @@ impl FnInfo {
                             self.emit_set_table(last_line, a as isize, k_regs[i], v_regs[i]);
                         }
                     } else {
-                        dbg!();
                         let a = self.up_value_index(&"_ENV".to_string())
                             .ok_or(Error::NotUpValue {
                                 line: last_line,
@@ -1125,14 +1116,13 @@ impl FnInfo {
                 let a = self.alloc_registers(n)?;
                 self.emit_load_nil(last_line, a as isize, n as isize);
             }
-
-            self.used_regs = old_regs;
-            let start_pc = self.pc() + 1;
-            for name in names {
-                self.add_local_var(name.clone(), start_pc)?;
-            }
         }
-        dbg!();
+
+        self.used_regs = old_regs;
+        let start_pc = self.pc() + 1;
+        for name in names {
+            self.add_local_var(name.clone(), start_pc)?;
+        }
 
         Ok(())
     }
@@ -1172,12 +1162,11 @@ impl FnInfo {
                 let a = self.alloc_registers(n)?;
                 self.emit_load_nil(last_line, a as isize, n as isize);
             }
-
-            self.used_regs = old_regs;
-            let start_pc = self.pc() + 1;
-            for name in names {
-                self.add_local_var(name.clone(), start_pc)?;
-            }
+        }
+        self.used_regs = old_regs;
+        let start_pc = self.pc() + 1;
+        for name in names {
+            self.add_local_var(name.clone(), start_pc)?;
         }
 
         Ok(())
@@ -1449,6 +1438,9 @@ fn is_vararg_or_fn_call(exp: &Exp) -> bool {
 
 
 mod tests {
+    use std::fs;
+
+    use crate::binary::encode;
     use crate::compiler::lexer::*;
     use crate::compiler::parser::*;
 
@@ -1506,5 +1498,32 @@ mod tests {
         println!("{:#?}", block);
         let proto = gen_prototype(Box::new(block));
         println!("{:#?}", proto);
+    }
+
+    #[test]
+    fn test_codegen2() {
+        let s = r##"
+        local g = {
+            a = 1,
+            b = {}
+        }
+
+        print(g.a)
+        print(g.b)
+
+        local a = 1
+        while a < 1 do
+            a = a + 1
+        end
+        print(a)
+        "##.to_string();
+
+        let mut lexer = Lexer::from_iter(s.into_bytes(), "test".to_string());
+        let block = parse_block(&mut lexer).expect("parse error");
+        let proto = gen_prototype(Box::new(block));
+
+        let bytes = encode(proto.unwrap(), Some("@hello2.lua".to_string()));
+        fs::write("D:/code/Rust/lua-rs/tests/test.out", bytes);
+        assert_eq!(1, 2);
     }
 }

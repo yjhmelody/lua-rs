@@ -64,11 +64,12 @@ impl Reader {
 
     fn read_string0(&mut self) -> Option<String> {
         let mut size = self.read_byte() as usize;
+        dbg!(&size);
         if size == 0 {
             return None;
         }
         if size == 0xFF {
-            size = self.read_u64() as usize; // size_t
+            size = self.read_u32() as usize; // size_t
         }
         let bytes = self.read_bytes(size - 1);
         let string = String::from_utf8(bytes);
@@ -88,6 +89,7 @@ impl Reader {
     }
 
     pub fn check_header(&mut self) {
+        // 17 + 16 = 33
         assert_eq!(self.read_bytes(4), LUA_SIGNATURE, "not a precompiled chunk!");
         assert_eq!(self.read_byte(), LUAC_VERSION, "version mismatch!");
         assert_eq!(self.read_byte(), LUAC_FORMAT, "format mismatch!");

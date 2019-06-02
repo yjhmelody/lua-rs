@@ -68,9 +68,10 @@ impl Writer {
 
     fn write_string0(&mut self, s: &String) -> Option<()> {
         if s.len() == 0 {
+            self.write_byte(0);
             None
         } else if s.len() < 0xFF {
-            self.write_byte(s.len() as u8 - 1);
+            self.write_byte(s.len() as u8 + 1);
             self.write_bytes(s.as_bytes().to_vec());
             Some(())
         } else {
@@ -93,8 +94,9 @@ impl Writer {
         self.write_lua_number(LUAC_NUM);
     }
 
-    pub fn write_proto(&mut self, proto: Rc<Prototype>) {
-        self.write_string0(&proto.source.clone().unwrap());
+    pub fn write_proto(&mut self, proto: Rc<Prototype>, parent_source: Option<String>) {
+        self.write_string0(&parent_source.clone().unwrap_or_default());
+
         self.write_u32(proto.line_defined);
         self.write_u32(proto.last_line_defined);
         self.write_byte(proto.num_params);
@@ -118,7 +120,7 @@ impl Writer {
 
         self.write_u32(proto.prototypes.len() as u32);
         for prototype in proto.prototypes.iter() {
-            self.write_proto(prototype.clone());
+            self.write_proto(prototype.clone(), None);
         }
 
         self.write_u32(proto.line_info.len() as u32);
