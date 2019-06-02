@@ -9,16 +9,19 @@ pub struct Reader {
 }
 
 impl Reader {
+    #[inline]
     pub fn new(data: Vec<u8>) -> Self {
         Self { data, pos: 0 }
     }
 
+    #[inline]
     pub fn read_byte(&mut self) -> u8 {
         let b = self.data[self.pos];
         self.pos += 1;
         b
     }
 
+    #[inline]
     fn read_u32(&mut self) -> u32 {
         let a0 = self.read_byte() as u32;
         let a1 = self.read_byte() as u32;
@@ -27,16 +30,20 @@ impl Reader {
         (a3 << 24) | (a2 << 16) | (a1 << 8) | a0
     }
 
+    #[inline]
     fn read_u64(&mut self) -> u64 {
         let a0 = self.read_u32() as u64;
         let a1 = self.read_u32() as u64;
+        dbg!(a1 << 32 | a0);
         (a1 << 32) | a0
     }
 
+    #[inline]
     fn read_lua_integer(&mut self) -> i64 {
         self.read_u64() as i64
     }
 
+    #[inline]
     fn read_lua_number(&mut self) -> f64 {
         use std::f64; // TODO
         f64::from_bits(self.read_u64())
@@ -50,6 +57,7 @@ impl Reader {
         vec
     }
 
+    #[inline]
     fn read_string(&mut self) -> String {
         self.read_string0().unwrap_or_default()
     }
@@ -93,6 +101,7 @@ impl Reader {
         assert_eq!(self.read_lua_number(), LUAC_NUM, "float format mismatch!");
     }
 
+    #[inline]
     pub fn read_proto(&mut self) -> Rc<Prototype> {
         self.read_proto0(None)
     }
@@ -129,6 +138,7 @@ impl Reader {
         }
     }
 
+    #[inline]
     fn read_up_value(&mut self) -> UpValue {
         UpValue {
             instack: self.read_byte(),
@@ -136,6 +146,7 @@ impl Reader {
         }
     }
 
+    #[inline]
     fn read_loc_var(&mut self) -> LocalVar {
         LocalVar {
             var_name: self.read_string(),

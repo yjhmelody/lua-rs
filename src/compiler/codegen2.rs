@@ -63,9 +63,7 @@ pub fn gen_prototype(block: Box<Block>) -> Result<Rc<Prototype>> {
     fn_info.add_local_var("_ENV".to_string(), 0)?;
     fn_info.codegen_fn_def_exp(&fn_def, 0)?;
 
-    Ok(
-        fn_info.to_prototype()
-    )
+    Ok(fn_info.to_prototype())
 }
 
 /// Local Variable Information Reference
@@ -363,7 +361,7 @@ impl FnInfo {
     }
 
     /// Create a jump instruction to a latest loop block
-    fn add_break_jump(&mut self, pc: usize) -> Result<()> {
+    fn add_break_jump(&mut self, pc: usize, line: Line) -> Result<()> {
         for brk in &mut self.breaks.iter_mut().rev() {
             match brk.as_mut() {
                 Some(arr) => {
@@ -373,7 +371,7 @@ impl FnInfo {
                 None => {}
             }
         }
-        Err(Error::NoLoop)
+        Err(Error::NoLoop { line })
     }
 
     /// Get up value's index
@@ -823,7 +821,7 @@ impl FnInfo {
 
     fn codegen_break_stat(&mut self, line: Line) -> Result<()> {
         let pc = self.emit_jmp(line, 0, 0);
-        self.add_break_jump(pc)
+        self.add_break_jump(pc, line)
     }
 
     fn codegen_do_stat(&mut self, block: &Block) -> Result<()> {
@@ -880,7 +878,7 @@ impl FnInfo {
         self.enter_scope(true);
         self.codegen_block(block)?;
         self.close_open_up_values(block.last_line);
-        self.emit_jmp(block.last_line, 0, (pc_before_exp - self.pc() - 1) as isize);
+        self.emit_jmp(block.last_line, 0, (pc_before_exp as isize - self.pc() as isize - 1));
         self.exit_scope()?;
 
         self.fix_sbx(pc_jmp_to_end, (self.pc() - pc_jmp_to_end) as isize);
@@ -914,8 +912,8 @@ impl FnInfo {
             // fixme
             pc_jmp_to_next_exp = self.emit_jmp(0, 0, 0) as isize;
 
-            let block = &blocks[i];
             self.enter_scope(false);
+            let block = &blocks[i];
             self.codegen_block(block)?;
             self.close_open_up_values(block.last_line);
             self.exit_scope()?;
@@ -1069,7 +1067,10 @@ impl FnInfo {
                     } else {
                         dbg!();
                         let a = self.up_value_index(&"_ENV".to_string())
-                            .ok_or(Error::NotUpValue)? as isize;
+                            .ok_or(Error::NotUpValue {
+                                line: last_line,
+                            })? as isize;
+
                         if k_regs[i] < 0 {
                             let b = 0x100 + self.constant_index(&Constant::String(name.clone())) as isize;
                             self.emit_set_table_up(last_line, a, b, v_regs[i]);
@@ -1242,6 +1243,7 @@ impl FnInfo {
 
     // f[a] := function(args) body end
     fn codegen_fn_def_exp(&mut self, fn_def: &FnDef, a: isize) -> Result<()> {
+        dbg!(count());
         let parent = FnInfoRef(Rc::new(RefCell::new(self.clone())));
         let sub_fn = Self::new(Some(parent), fn_def.par_list.clone(), fn_def.line, fn_def.last_line);
         let mut sub_fn = FnInfoRef(Rc::new(RefCell::new(sub_fn)));
@@ -1455,6 +1457,17 @@ mod tests {
     #[test]
     fn test_codegen() {
         let s = r##"
+        local g = {
+            a = 1,
+            b = {}
+        }
+        -- comment
+        local a = true and false or false or not true
+        local b = ((1 | 2) & 3) >> 1 << 1
+        local c = (3 + 2 - 1) * (5 % 2) // 2 / 2 ^ 2
+        local d = not not not not not false
+        local e = - - - - -1
+        local f = ~ ~ ~ ~ ~1
 
         package.preload.mymod = function(modname)
           local loader = function(modname, extra)
@@ -1467,15 +1480,30 @@ mod tests {
 
         function hello()
           function world()
-          end
+             a = 1
+             while a < 10 do
+                a = a + 1
+             end
+           end
         end
+
+
+
         "##.to_string();
 
 //        let s  = r##"
+//        function preloadSearcher(modname)
+//          if package.preload[modname] ~= nil then
+//            return package.preload[modname]
+//          else
+//            return 1
+//          end
+//        end5
 //        local a = 1;
 //        "##.to_string();
         let mut lexer = Lexer::from_iter(s.into_bytes(), "test".to_string());
         let block = parse_block(&mut lexer).expect("parse error");
+        println!("{:#?}", block);
         let proto = gen_prototype(Box::new(block));
         println!("{:#?}", proto);
     }

@@ -50,9 +50,9 @@ pub enum Error {
     /// No more Scopes
     NoMoreScopes,
     /// Not in a loop
-    NoLoop,
+    NoLoop { line: Line },
     /// Not a UpValue
-    NotUpValue,
+    NotUpValue { line: Line },
     /// Not a vararg function
     NotVararg { line: Line },
 }
@@ -81,8 +81,8 @@ impl Display for Error {
             NoMoreRegisters => write!(f, "codegen error: NoMoreRegisters"),
             IllegalRegister => write!(f, "codegen error: IllegalRegister"),
             NoMoreScopes => write!(f, "codegen error: NoMoreScopes"),
-            NoLoop => write!(f, "codegen error: NoLoop"),
-            NotUpValue => write!(f, "codegen error: NotUpValue"),
+            NoLoop { line } => write!(f, "line: {}, codegen error: NoLoop", *line),
+            NotUpValue { line } => write!(f, "line: {}, codegen error: NotUpValue", *line),
             NotVararg { line } => write!(f, "line: {}, codegen error: NotVararg", *line),
         }
     }
