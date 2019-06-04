@@ -36,7 +36,6 @@ impl Writer {
 
     #[inline]
     fn write_u64(&mut self, b8: u64) {
-        dbg!(&b8);
         let a0 = ((b8 & 0xFF_FF_FF_FF_00_00_00_00) >> 32) as u32;
         let a1 = (b8 & 0xFF_FF_FF_FF) as u32;
 

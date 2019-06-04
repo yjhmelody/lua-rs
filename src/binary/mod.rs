@@ -1,8 +1,9 @@
 use std::rc::Rc;
 
 pub mod chunk;
-pub mod reader;
-pub mod writer;
+mod reader;
+mod writer;
+
 
 
 /// decode Lua binary chunk to prototype structure
@@ -32,33 +33,21 @@ mod tests {
         writer.write_header();
         let mut reader = reader::Reader::new(writer.as_bytes());
         reader.check_header();
-        assert_eq!(1, 0);
     }
 
 
     #[test]
     fn test_decode() {
-        let s = fs::read("D:/code/Rust/lua-rs/tests/luac.out").expect("error");
+        let s = fs::read("./tests/luac.out").expect("error");
         let proto = decode(s);
-
-        println!("{:#?}", proto);
-        assert_eq!(1, 0);
     }
 
-    #[test]
     fn test_encode() {
-        let chunk = fs::read("D:/code/Rust/lua-rs/tests/luac.out").expect("error");
+        let chunk = fs::read("./tests/luac.out").expect("error");
         let proto = encode(decode(chunk.clone()), Some("@example.lua".to_string()));
         let proto = encode(decode(chunk.clone()), Some("@hello.lua".to_string()));
 
         let s = unsafe { String::from_utf8_unchecked(proto.clone()) };
-        fs::write("D:/code/Rust/lua-rs/tests/test.out", s);
-        let mut i = 0;
-        for (a, b) in chunk.iter().zip(proto.iter()) {
-            println!("{}", i);
-            assert_eq!(*a, *b);
-            i += 1;
-        }
-        assert_eq!(chunk[33..], proto[33..]);
+        fs::write("./tests/test.out", s);
     }
 }

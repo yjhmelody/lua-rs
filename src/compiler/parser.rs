@@ -10,10 +10,30 @@ use crate::number::parser::*;
 
 /// parse gets a lexer and returns a Lua Block which is Lua AST
 pub fn parse_block(lexer: &mut impl Lex) -> Result<Block> {
+    let stats = parse_stats(lexer)?;
+    let res = parse_ret_exps(lexer);
+    let ret_exps;
+
+    match res {
+        Ok(res) => {
+            ret_exps = Some(res);
+        }
+
+        Err(Error::NoReturnValue) => {
+            ret_exps = None;
+        }
+
+        Err(err) => {
+            return Err(err);
+        }
+    }
+
+    let last_line = lexer.current_line();
+
     Ok(Block::new(
-        parse_stats(lexer)?,
-        parse_ret_exps(lexer)?,
-        lexer.current_line(),
+        stats,
+        ret_exps,
+        last_line,
     ))
 }
 
@@ -34,7 +54,7 @@ fn parse_stats(lexer: &mut impl Lex) -> Result<Vec<Stat>> {
 fn parse_ret_exps(lexer: &mut impl Lex) -> Result<Vec<Exp>> {
     match lexer.look_ahead() {
         Ok(Token::KwReturn) => {}
-        _ => return Ok(vec![]),
+        _ => return Err(Error::NoReturnValue),
     };
     // skip `return`
     lexer.skip_next_token();

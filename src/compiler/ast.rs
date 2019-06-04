@@ -1,7 +1,5 @@
 #![allow(dead_code)]
 
-use std::fmt::{self, Display, Formatter};
-
 use crate::compiler::lexer::Line;
 use crate::compiler::token::Token;
 
@@ -9,14 +7,14 @@ use crate::compiler::token::Token;
 #[derive(Debug)]
 pub struct Block {
     pub stats: Vec<Stat>,
-    pub ret_exps: Vec<Exp>,
+    pub ret_exps: Option<Vec<Exp>>,
     pub last_line: Line,
 }
 
 impl Block {
     /// Creates a Lua Block, which is also a Lua Chunk
     #[inline]
-    pub fn new(stats: Vec<Stat>, ret_exps: Vec<Exp>, last_line: Line) -> Self {
+    pub fn new(stats: Vec<Stat>, ret_exps: Option<Vec<Exp>>, last_line: Line) -> Self {
         Self {
             stats,
             ret_exps,
@@ -74,24 +72,6 @@ pub enum Exp {
     /// function call is either expression or statement
     FnCall(FnCall),
 }
-
-//impl Display for Block {
-//    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-//        unimplemented!()
-//    }
-//}
-//
-//impl Display for Stat {
-//    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-//        unimplemented!()
-//    }
-//}
-//
-//impl Display for Exp {
-//    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-//        unimplemented!()
-//    }
-//}
 
 
 /// Lua Function Definition

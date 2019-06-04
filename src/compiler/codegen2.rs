@@ -36,7 +36,6 @@
 #![allow(unused_mut)]
 #![allow(non_snake_case)]
 
-use core::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::iter;
@@ -77,7 +76,7 @@ pub type LocalVarInfoRef = Rc<RefCell<LocalVarInfo>>;
 /// Local Variable Information
 #[derive(Debug, Copy, Clone)]
 pub struct LocalVarInfo {
-    scope_level: usize,
+    scope_level: isize,
     slot: usize,
     is_captured: bool,
     start_pc: usize,
@@ -116,7 +115,7 @@ pub struct FnInfo {
     /// Maximum need of num of regs
     max_regs: usize,
     /// Block scope level
-    scope_level: usize,
+    scope_level: isize,
     /// Local variable of all scope
     local_vars: Vec<HashMap<String, LocalVarInfoRef>>,
     /// Record some breaks statements
@@ -198,7 +197,7 @@ impl FnInfo {
             max_regs: 0,
             scope_level: 0,
             local_vars: vec![HashMap::new()],
-            breaks: Vec::new(),
+            breaks: vec![None],
 //            parent_index,
 //            current_index,
             up_values: HashMap::new(),
@@ -257,18 +256,19 @@ impl FnInfo {
 
     #[inline]
     fn get_current_scope(&self) -> &HashMap<String, LocalVarInfoRef> {
-        &self.local_vars[self.scope_level - 1]
+        &self.local_vars[self.scope_level as usize]
     }
 
     #[inline]
     fn get_current_scope_mut(&mut self) -> &mut HashMap<String, LocalVarInfoRef> {
-        &mut self.local_vars[self.scope_level - 1]
+        &mut self.local_vars[self.scope_level as usize]
     }
 
     /// Create a new scope for vars, true for breakable
     #[inline]
     fn enter_scope(&mut self, breakable: bool) {
         self.scope_level += 1;
+        self.local_vars.push(HashMap::new());
         if breakable {
             self.breaks.push(Some(vec![]));
         } else {
@@ -300,8 +300,9 @@ impl FnInfo {
     fn get_jump_arg_a(&mut self) -> isize {
         let mut has_captured_local_var = false;
         let mut min_local_var_slot = self.max_regs;
+        // fixme
         let local_vars = self.get_current_scope_mut();
-        local_vars.clone().iter().for_each(|(k, mut local_var)| {
+        local_vars.iter().for_each(|(k, mut local_var)| {
             if local_var.borrow_mut().is_captured {
                 has_captured_local_var = true;
             }
@@ -328,11 +329,11 @@ impl FnInfo {
             end_pc: 0,
         }));
         let slot = new_var.borrow_mut().slot;
-        if self.local_vars.len() <= self.scope_level {
+        if self.local_vars.len() as isize <= self.scope_level {
             self.local_vars.resize(self.local_vars.len() * 2, HashMap::new());
         }
 
-        self.local_vars[self.scope_level].insert(name, new_var);
+        self.local_vars[self.scope_level as usize].insert(name, new_var);
         Ok(slot)
     }
 
@@ -751,8 +752,12 @@ impl FnInfo {
         for stat in &block.stats {
             self.codegen_stat(stat)?;
         }
-        let res = self.codegen_ret_stat(&block.ret_exps, block.last_line);
-        return res;
+        match &block.ret_exps {
+            Some(ret_exps) => {
+                self.codegen_ret_stat(ret_exps, block.last_line)
+            }
+            None => { Ok(()) }
+        }
     }
 
     fn codegen_stat(&mut self, stat: &Stat) -> Result<()> {
@@ -778,23 +783,44 @@ impl FnInfo {
             self.emit_return(last_line, 0, 0);
             Ok(())
         } else {
-            let is_mult_ret = is_vararg_or_fn_call(exps.last().unwrap());
+            if exps.len() == 1 {
+                match &exps[0] {
+                    Exp::Name(name, line) => {
+                        if let Ok(reg) = self.local_var_slot(name) {
+                            self.emit_return(*line, reg as isize, 1);
+                            return Ok(());
+                        }
+                    }
+
+//                    Exp::FnCall(fn_call) => {
+//                        let reg = self.alloc_register()? as isize;
+//                        self.codegen_tail_call_exp(fn_call, reg)?;
+//                        self.free_register();
+//                        self.emit_return(last_line, reg, -1);
+//                    }
+
+                    _ => {}
+                }
+            }
+
+            let mult_ret = is_vararg_or_fn_call(exps.last().unwrap());
             let num = exps.len() - 1;
             for (i, exp) in exps.iter().enumerate() {
                 let reg = self.alloc_register()? as isize;
                 // has `...` or function call
-                if i == num && is_mult_ret {
+                if i == num && mult_ret {
                     self.codegen_exp(exp, reg, -1)?;
                 } else {
                     self.codegen_exp(exp, reg, 1)?;
                 }
             }
             self.free_registers(num);
+
             let a = self.used_regs;
-            if is_mult_ret {
+            if mult_ret {
                 self.emit_return(last_line, a as isize, -1);
             } else {
-                self.emit_return(last_line, a as isize, num as isize);
+                self.emit_return(last_line, a as isize, exps.len() as isize);
             }
 
             Ok(())
@@ -904,7 +930,6 @@ impl FnInfo {
             self.free_register();
 
             self.emit_test(0, reg, 0);
-            // fixme
             pc_jmp_to_next_exp = self.emit_jmp(0, 0, 0) as isize;
 
             self.enter_scope(false);
@@ -1232,7 +1257,6 @@ impl FnInfo {
 
     // f[a] := function(args) body end
     fn codegen_fn_def_exp(&mut self, fn_def: &FnDef, a: isize) -> Result<()> {
-        dbg!(count());
         let parent = FnInfoRef(Rc::new(RefCell::new(self.clone())));
         let sub_fn = Self::new(Some(parent), fn_def.par_list.clone(), fn_def.line, fn_def.last_line);
         let mut sub_fn = FnInfoRef(Rc::new(RefCell::new(sub_fn)));
@@ -1242,6 +1266,7 @@ impl FnInfo {
             sub_fn.0.borrow_mut().add_local_var(param.clone(), 0)?;
         }
         self.codegen_block(&*fn_def.block)?;
+        sub_fn.0.borrow_mut().exit_scope()?;
         sub_fn.0.borrow_mut().emit_return(fn_def.block.last_line, 0, 0);
 
         let bx = self.sub_fns.len() - 1;
@@ -1381,6 +1406,10 @@ impl FnInfo {
         let n_args = self.prep_fn_call(fn_call, a)? as isize;
         self.emit_call(fn_call.line, a, n_args, n);
         Ok(())
+    }
+
+    fn codegen_tail_call_exp(&mut self, fn_call: &FnCall, a: isize) -> Result<()> {
+        unimplemented!();
     }
 
     fn prep_fn_call(&mut self, fn_call: &FnCall, a: isize) -> Result<usize> {
@@ -1523,7 +1552,6 @@ mod tests {
         let proto = gen_prototype(Box::new(block));
 
         let bytes = encode(proto.unwrap(), Some("@hello2.lua".to_string()));
-        fs::write("D:/code/Rust/lua-rs/tests/test.out", bytes);
-        assert_eq!(1, 2);
+        fs::write("./tests/test.out", bytes);
     }
 }

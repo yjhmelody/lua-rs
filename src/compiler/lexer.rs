@@ -57,7 +57,7 @@ pub struct Lexer {
     /// 当前位置
     index: usize,
     /// 源文件名
-    chunk_name: String,
+    pub chunk_name: String,
     /// 当前行号
     line: Line,
     /// 缓存前看token

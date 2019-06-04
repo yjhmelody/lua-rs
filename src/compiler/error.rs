@@ -55,6 +55,7 @@ pub enum Error {
     NotUpValue { line: Line },
     /// Not a vararg function
     NotVararg { line: Line },
+    NoReturnValue,
 }
 
 impl Display for Error {
@@ -84,6 +85,7 @@ impl Display for Error {
             NoLoop { line } => write!(f, "line: {}, codegen error: NoLoop", *line),
             NotUpValue { line } => write!(f, "line: {}, codegen error: NotUpValue", *line),
             NotVararg { line } => write!(f, "line: {}, codegen error: NotVararg", *line),
+            _ => unreachable!(),
         }
     }
 }
