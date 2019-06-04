@@ -44,9 +44,7 @@ mod tests {
 
     fn test_encode() {
         let chunk = fs::read("./tests/luac.out").expect("error");
-        let proto = encode(decode(chunk.clone()), Some("@example.lua".to_string()));
         let proto = encode(decode(chunk.clone()), Some("@hello.lua".to_string()));
-
         let s = unsafe { String::from_utf8_unchecked(proto.clone()) };
         fs::write("./tests/test.out", s);
     }
