@@ -2,14 +2,13 @@
 
 extern crate lua_rs;
 
+use lua_rs::binary::*;
+use lua_rs::compiler::codegen::gen_prototype;
+use lua_rs::compiler::lexer::*;
+use lua_rs::compiler::parser::parse_block;
 use std::env;
 use std::fs;
 use std::path::Path;
-
-use lua_rs::binary::*;
-use lua_rs::compiler::codegen2::gen_prototype;
-use lua_rs::compiler::lexer::*;
-use lua_rs::compiler::parser::parse_block;
 
 fn main() {
     let args = env::args().collect::<Vec<_>>();
@@ -43,11 +42,8 @@ fn main() {
         println!("{:#?}", block);
     } else if &args[1] == "codegen" {
         let mut lexer = Lexer::from_iter(file, file_name.to_str().unwrap().to_string());
-        dbg!();
         let block = parse_block(&mut lexer).expect("parse error");
-        dbg!();
         let proto = gen_prototype(Box::new(block)).unwrap();
-        dbg!();
         println!("{:?}\n", file_name);
         println!("{:#?}", proto);
     } else if &args[1] == "bytecode" {

@@ -36,7 +36,7 @@
 #![allow(unused_mut)]
 #![allow(non_snake_case)]
 
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::iter;
 use std::rc::Rc;
@@ -65,9 +65,16 @@ pub fn gen_prototype(block: Box<Block>) -> Result<Rc<Prototype>> {
         UpValueInfo::new(Some(0), Some(0), 0),
     );
 
-    fn_info.codegen_fn_def_exp(&fn_def, 0)?;
 
-    Ok(fn_info.to_prototype())
+    let fn_info_ref = FnInfoRef(Rc::new(RefCell::new(fn_info)));
+    FnInfo::codegen_fn_def_exp2(&fn_info_ref, &fn_def, 0)?;
+    fn_info_ref.0.borrow_mut().emit_return(last_line, 0, 0);
+    let proto = fn_info_ref.0.borrow_mut().to_prototype();
+    Ok(proto)
+
+//    fn_info.codegen_fn_def_exp(&fn_def, 0)?;
+//    fn_info.emit_return(last_line, 0, 0);
+//    Ok(fn_info.to_prototype())
 }
 
 /// Local Variable Information Reference
@@ -306,8 +313,7 @@ impl FnInfo {
             if local_var.borrow_mut().is_captured {
                 has_captured_local_var = true;
             }
-            // todo: fix it
-            if local_var.borrow_mut().slot < min_local_var_slot {
+            if local_var.borrow_mut().slot < min_local_var_slot && k.starts_with('(') {
                 min_local_var_slot = local_var.borrow_mut().slot;
             }
         });
@@ -481,7 +487,8 @@ impl FnInfo {
 
         self.up_values.iter().for_each(|(_, up_val)| {
             // instack
-            if up_val.up_value_index.is_some() {
+            // fixme
+            if up_val.local_var_slot.is_some() {
                 up_vals[up_val.index] = UpValue::new(1, up_val.local_var_slot.unwrap() as u8);
             } else {
                 up_vals[up_val.index] = UpValue::new(0, up_val.up_value_index.unwrap() as u8);
@@ -871,7 +878,7 @@ impl FnInfo {
 
         self.emit_test(block.last_line, reg as isize, 0);
         let a = self.get_jump_arg_a();
-        self.emit_jmp(block.last_line, a, (pc_before_block - self.pc() - 1) as isize);
+        self.emit_jmp(block.last_line, a, (pc_before_block as isize - self.pc() as isize - 1));
         self.close_open_up_values(block.last_line);
 
         self.exit_scope()
@@ -1191,7 +1198,6 @@ impl FnInfo {
         self.used_regs = old_regs;
         let start_pc = self.pc() + 1;
         for name in names {
-            dbg!(&name);
             self.add_local_var(name.clone(), start_pc)?;
         }
 
@@ -1258,6 +1264,7 @@ impl FnInfo {
 
     // f[a] := function(args) body end
     fn codegen_fn_def_exp(&mut self, fn_def: &FnDef, a: isize) -> Result<()> {
+        // fixme
         let parent = FnInfoRef(Rc::new(RefCell::new(self.clone())));
         let sub_fn = Self::new(Some(parent), fn_def.par_list.clone(), fn_def.line, fn_def.last_line);
         let mut sub_fn = FnInfoRef(Rc::new(RefCell::new(sub_fn)));
@@ -1266,12 +1273,32 @@ impl FnInfo {
         for param in &fn_def.par_list.params {
             sub_fn.0.borrow_mut().add_local_var(param.clone(), 0)?;
         }
-        self.codegen_block(&*fn_def.block)?;
+        sub_fn.0.borrow_mut().codegen_block(&*fn_def.block)?;
+//        self.codegen_block(&*fn_def.block)?;
         sub_fn.0.borrow_mut().exit_scope()?;
         sub_fn.0.borrow_mut().emit_return(fn_def.block.last_line, 0, 0);
 
         let bx = self.sub_fns.len() - 1;
         self.emit_closure(fn_def.block.last_line, a, bx as isize);
+        Ok(())
+    }
+
+    // f[a] := function(args) body end
+    fn codegen_fn_def_exp2(parent: &FnInfoRef, fn_def: &FnDef, a: isize) -> Result<()> {
+        // fixme
+        let sub_fn = Self::new(Some(parent.clone()), fn_def.par_list.clone(), fn_def.line, fn_def.last_line);
+        let mut sub_fn = FnInfoRef(Rc::new(RefCell::new(sub_fn)));
+        parent.0.borrow_mut().sub_fns.push(sub_fn.clone());
+
+        for param in &fn_def.par_list.params {
+            sub_fn.0.borrow_mut().add_local_var(param.clone(), 0)?;
+        }
+        parent.0.borrow_mut().codegen_block(&*fn_def.block)?;
+        sub_fn.0.borrow_mut().exit_scope()?;
+        sub_fn.0.borrow_mut().emit_return(fn_def.block.last_line, 0, 0);
+
+        let bx = parent.0.borrow_mut().sub_fns.len() - 1;
+        parent.0.borrow_mut().emit_closure(fn_def.block.last_line, a, bx as isize);
         Ok(())
     }
 

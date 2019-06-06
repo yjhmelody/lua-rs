@@ -1,11 +1,10 @@
 #![allow(non_upper_case_globals)]
 #![allow(dead_code)]
 
+use regex::bytes::Regex;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::str;
-
-use regex::bytes::Regex;
 
 use crate::compiler::error::*;
 use crate::compiler::token::Token;
@@ -16,9 +15,7 @@ pub type Line = usize;
 /// Some structures implementing Lex can be used by parser
 pub trait Lex {
     /// 返回当前行
-    fn current_line(&self) -> Line {
-        0
-    }
+    fn current_line(&self) -> Line { 0 }
 
     /// 前瞻1个token
     fn look_ahead(&mut self) -> Result<Token>;

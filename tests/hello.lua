@@ -64,3 +64,27 @@ bar(1, 2, 3)
 do
     print("do")
 end
+
+
+function fibonacii()
+    local m = 1
+    local n = 1
+    while true do
+        coroutine.yield(m)
+        m, n = n , m + n
+    end
+end
+
+gen = coroutine.create(fibonacii)
+succeeded, value = coroutine.resume(gen)
+print(value)
+succeeded, value = coroutine.resume(gen)
+print(value)
+succeeded, value = coroutine.resume(gen)
+print(value)
+succeeded, value = coroutine.resume(gen)
+print(value)
+succeeded, value = coroutine.resume(gen)
+print(value)
+succeeded, value = coroutine.resume(gen)
+print(value)

@@ -1,9 +1,8 @@
 use std::rc::Rc;
 
 pub mod chunk;
-mod reader;
-mod writer;
-
+pub mod reader;
+pub mod writer;
 
 
 /// decode Lua binary chunk to prototype structure
